@@ -9,6 +9,7 @@ const AUTO_DISMISS_MS = 4000;
 
 export class GsToast extends Base {
   #onEvent = (e) => this.toast(e.detail ?? {});
+  #timers = new Set();
 
   connectedCallback() {
     this.setAttribute('aria-live', 'polite');
@@ -17,6 +18,8 @@ export class GsToast extends Base {
 
   disconnectedCallback() {
     document.removeEventListener('gs-toast', this.#onEvent);
+    for (const timer of this.#timers) clearTimeout(timer);
+    this.#timers.clear();
   }
 
   toast({ status = 'idle', text = '', kaomoji = '' } = {}) {
@@ -46,7 +49,11 @@ export class GsToast extends Base {
       ok.addEventListener('click', () => item.remove());
       item.append(ok);
     } else {
-      setTimeout(() => item.remove(), AUTO_DISMISS_MS);
+      const timer = setTimeout(() => {
+        this.#timers.delete(timer);
+        item.remove();
+      }, AUTO_DISMISS_MS);
+      this.#timers.add(timer);
     }
 
     this.append(item);

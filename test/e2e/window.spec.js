@@ -9,6 +9,7 @@ test('declarative markup upgrades with no page errors', async ({ page }) => {
   await page.goto('/test/e2e/pages/window.html');
   // gs-window is display:none until [open] (base.css), so the frame is attached but hidden here
   await page.waitForSelector('gs-window [part="frame"]', { state: 'attached' });
+  await expect(page.locator('#w [part="frame"]')).toBeHidden();
   expect(errors).toEqual([]);
 });
 
@@ -18,9 +19,11 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('window opens, moves children into the body, traps tab and closes on escape with gs-close', async ({ page }) => {
+  await expect(page.locator('#w [part="frame"]')).toBeHidden();
   await page.locator('#opener').focus();
   await page.evaluate(() => document.getElementById('w').open());
   await expect(page.locator('#w')).toHaveAttribute('open', '');
+  await expect(page.locator('#w [part="frame"]')).toBeVisible();
   await expect(page.locator('#w [part="body"] #yes')).toBeVisible();
   await expect(page.locator('#yes')).toBeFocused();
   await expect(page.locator('#w [part="title"]')).toHaveText('confirm');
@@ -37,16 +40,23 @@ test('window opens, moves children into the body, traps tab and closes on escape
   await page.keyboard.press('Escape');
   expect(await closed).toBe(true);
   await expect(page.locator('#w')).not.toHaveAttribute('open', '');
+  await expect(page.locator('#w [part="frame"]')).toBeHidden();
   await expect(page.locator('#opener')).toBeFocused();
 });
 
 test('the close button and the backdrop both close the window', async ({ page }) => {
   await page.evaluate(() => document.getElementById('w').open());
+  await expect(page.locator('#w [part="frame"]')).toBeVisible();
   await page.locator('#w [part="close"]').click();
   await expect(page.locator('#w')).not.toHaveAttribute('open', '');
+  await expect(page.locator('#w [part="frame"]')).toBeHidden();
+  await expect(page.locator('#w [part="backdrop"]')).toBeHidden();
   await page.evaluate(() => document.getElementById('w').setAttribute('open', ''));
+  await expect(page.locator('#w [part="backdrop"]')).toBeVisible();
   await page.locator('#w [part="backdrop"]').click({ position: { x: 5, y: 5 } });
   await expect(page.locator('#w')).not.toHaveAttribute('open', '');
+  await expect(page.locator('#w [part="frame"]')).toBeHidden();
+  await expect(page.locator('#w [part="backdrop"]')).toBeHidden();
 });
 
 test('ok toasts are role=status, decode their text and leave after 4s', async ({ page }) => {
