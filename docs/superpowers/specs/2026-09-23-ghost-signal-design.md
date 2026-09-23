@@ -124,7 +124,8 @@ here fails in ci, the value changes, not the threshold.
 | `--gs-size-wordmark` | 34px | doto 900 |
 
 doto (ofl) ships in the package as woff2 and is declared with `@font-face` in `base.css`. nothing
-is fetched from google fonts. tauri's default csp would block it anyway.
+is fetched from google fonts. source is the upstream repo `oliverlalan/Doto` at a pinned commit
+(`googlefonts/doto` does not exist). tauri's default csp would block it anyway.
 
 case: lowercase everywhere in chrome, including labels. all caps only inside `<gs-tape>`. shouting
 caps in content is ghost's business, not the chrome's.
@@ -164,7 +165,8 @@ the default is a hard cut. easing is an exception that has to be listed here.
 | `--gs-mosh` | 420ms `steps(6)` | datamosh smear on crash |
 | `--gs-flare` | 640ms `steps(8)` | deny flare on a row |
 | `--gs-hover` | 80ms ease-out | color and border on hover/focus only |
-| `--gs-ambient-min/max` | 20s / 40s | ambient one-frame micro-glitch interval |
+| `--gs-motion-decode` | 250ms `steps(6)` | `<gs-decode>` scramble reveal |
+| `--gs-motion-ambient-min/max` | 20s / 40s | ambient one-frame micro-glitch interval |
 
 allowed to ease: `color`, `border-color`, `background-color` on hover and focus. nothing else.
 no transforms ease. no opacity fades between views.
@@ -245,7 +247,7 @@ html does not already have.
 |---|---|---|
 | `<gs-face>` | the mask | section 4.2 |
 | `<gs-mosaic>` | dot/ascii renderer | section 4.1 |
-| `<gs-decode>` | scramble reveal | 250ms, `steps(6)`, glyph pool from mono charset. seeded prng (section 9.3). wordmarks, toasts, and at glitch 2, verdict labels. never body |
+| `<gs-decode>` | scramble reveal | `--gs-motion-decode` (250ms, `steps(6)`), glyph pool from mono charset. seeded prng (section 9.3). wordmarks, toasts, and at glitch 2, verdict labels. never body |
 | `<gs-window>` | retro os popup | pixel title bar in doto, close glyph, used for dialogs and confirms. modal by default, traps focus, `esc` closes |
 | `<gs-tape>` | repeating-text tape strip | magenta by default, text repeats to fill, all caps allowed, scrolls in steps at glitch 1+, static at 0 |
 | `<gs-toast>` | toast stack | lowercase one-liner, optional trailing kaomoji, left bar in status color, auto-dismiss 4s, `deny`/`bypass` persist until dismissed |
@@ -316,7 +318,8 @@ app that emits anything else gets `warn` and a console error.
 {
   "$schema": "https://ghost-signal.local/schema/flavor.v1.json",
   "app": "seance",
-  "accent2": "#b78bff",
+  "ghostSignal": "^0.1",
+  "accent2": { "dark": "#b78bff", "light": "#5b2ea6" },
   "display": "\"Iowan Old Style\", Palatino, Georgia, serif",
   "texture": "dither",
   "sprite": "./sprites/ghost-sheet.grid",
@@ -329,8 +332,9 @@ app that emits anything else gets `warn` and a console error.
 }
 ```
 
-allowed: `accent2`, `display` (wordmark font only), `texture` (`dither` | `none`), `sprite` (the
-wallpaper sprite), `expressions`, `icons`, `copy` (any slot from 5.3).
+allowed: `accent2` as `{ dark, light }` (one hex cannot pass 4.5:1 on both themes), `display`
+(wordmark font only), `texture` (`dither` | `none`), `sprite` (the wallpaper sprite), `expressions`,
+`icons`, `copy` (any slot from 5.3). `ghostSignal` is required.
 
 locked, and rejected by the checker if present: any base surface, any text color, `accent`,
 `ok`, `warn`, `deny`, `bypass`, glitch colors, any motion value, any radius, any font other than
@@ -402,8 +406,8 @@ fires bypass and crash, and asserts `document.getAnimations()` is empty and `dat
 
 `<gs-mosaic>` has no rng. `<gs-decode>` and ambient glitch use a seeded prng exposed as
 `GS.seed(n)`; tests call `GS.seed(1)` before screenshots. the mosaic snapshot test renders the
-face in all seven statuses plus two reference images and compares canvas `toDataURL()` hashes to
-committed values.
+face in all seven statuses plus two reference grid fixtures and compares canvas `toDataURL()` hashes
+to committed values.
 
 ### 9.4 placement
 
