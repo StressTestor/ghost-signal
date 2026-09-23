@@ -2,7 +2,7 @@
 // writes every generated file. later tasks add outputs here; nothing else writes into gen/ or src/tokens.css
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { loadTokens, toCss } from './lib/tokens.js';
+import { loadTokens, toCss, toSwift, toRust, toMarkdown } from './lib/tokens.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -11,6 +11,9 @@ export async function generate() {
   await mkdir(`${root}/gen`, { recursive: true });
   const outputs = [
     ['src/tokens.css', toCss(tokens)],
+    ['gen/GhostSignal.swift', toSwift(tokens)],
+    ['gen/ghost_signal.rs', toRust(tokens)],
+    ['gen/tokens.md', toMarkdown(tokens)],
   ];
   for (const [rel, body] of outputs) {
     await writeFile(`${root}/${rel}`, body);
