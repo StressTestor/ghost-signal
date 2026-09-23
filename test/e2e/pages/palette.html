@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>gs-palette</title>
+  <link rel="stylesheet" href="../../../src/tokens.css">
+  <link rel="stylesheet" href="../../../src/base.css">
+  <link rel="stylesheet" href="../../../src/fx.css">
+  <script type="module">
+    import { registerCommands } from '../../../src/gs.js';
+    import '../../../src/components/palette.js';
+    registerCommands('probe', [
+      { id: 'probe.ping', title: 'ping the bridge', shortcut: 'p' },
+      { id: 'probe.tests', title: 'run tests' },
+    ]);
+    registerCommands('shell', [{ id: 'shell.theme', title: 'toggle theme', shortcut: 't' }]);
+    window.ready = true;
+  </script>
+</head>
+<body>
+  <gs-palette id="p"></gs-palette>
+</body>
+</html>
