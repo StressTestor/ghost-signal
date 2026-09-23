@@ -1,0 +1,96 @@
+/* generated from tokens.json by scripts/gen.js. do not edit */
+:root {
+  --gs-color-void: #050505;
+  --gs-color-surface: #0c0c0d;
+  --gs-color-raised: #151517;
+  --gs-color-hairline: #1e1f21;
+  --gs-color-etch: #2a2c2f;
+  --gs-color-text: #eef1f2;
+  --gs-color-text-muted: #8e9396;
+  --gs-color-text-faint: #3a3e41;
+  --gs-color-accent: #0ec224;
+  --gs-color-accent-bloom: #b2fcba;
+  --gs-color-accent-dim: #257829;
+  --gs-color-ok: #0cc0cb;
+  --gs-color-warn: #e8a33d;
+  --gs-color-deny: #ff5c4d;
+  --gs-color-bypass: #f8098c;
+  --gs-color-glitch-a: #f8098c;
+  --gs-color-glitch-b: #0cc0cb;
+  --gs-color-on-accent: #050505;
+  --gs-color-idle: var(--gs-color-text-faint);
+  --gs-color-working: var(--gs-color-accent);
+  --gs-color-crash: var(--gs-color-bypass);
+  --gs-font-display: "Doto", var(--gs-font-mono);
+  --gs-font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --gs-font-label: "Avenir Next Condensed", "SF Compact Text", "Arial Narrow", var(--gs-font-ui);
+  --gs-font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+  --gs-size-label: 11px;
+  --gs-size-mono: 12px;
+  --gs-size-body: 13px;
+  --gs-size-title: 18px;
+  --gs-size-wordmark: 34px;
+  --gs-tracking-label: 0.08em;
+  --gs-space-1: 4px;
+  --gs-space-2: 8px;
+  --gs-space-3: 12px;
+  --gs-space-4: 16px;
+  --gs-space-5: 24px;
+  --gs-space-6: 40px;
+  --gs-radius-control: 4px;
+  --gs-radius-panel: 8px;
+  --gs-radius-pill: 999px;
+  --gs-border: 1px solid var(--gs-color-hairline);
+  --gs-bar: 3px;
+  --gs-motion-sprite: 800ms;
+  --gs-motion-cut: 0ms;
+  --gs-motion-glitch: 180ms;
+  --gs-motion-mosh: 420ms;
+  --gs-motion-flare: 640ms;
+  --gs-motion-hover: 80ms;
+  --gs-motion-decode: 250ms;
+  --gs-motion-ambient-min: 20s;
+  --gs-motion-ambient-max: 40s;
+  --gs-step-sprite: steps(4);
+  --gs-step-glitch: steps(3);
+  --gs-step-mosh: steps(6);
+  --gs-step-flare: steps(8);
+  --gs-step-decode: steps(6);
+  --gs-ease-hover: ease-out;
+}
+
+:root[data-theme="light"] {
+  --gs-color-void: #f2f4f5;
+  --gs-color-surface: #e9ecee;
+  --gs-color-raised: #e4e7e9;
+  --gs-color-hairline: #d3d7da;
+  --gs-color-etch: #b9bec2;
+  --gs-color-text: #0b0c0d;
+  --gs-color-text-muted: #4b5054;
+  --gs-color-text-faint: #b0b5b9;
+  --gs-color-accent: #08701a;
+  --gs-color-accent-bloom: #0ec224;
+  --gs-color-accent-dim: #c6ecc9;
+  --gs-color-ok: #08666c;
+  --gs-color-warn: #7f560b;
+  --gs-color-deny: #ad2a23;
+  --gs-color-bypass: #b0065f;
+  --gs-color-glitch-a: #b0065f;
+  --gs-color-glitch-b: #08666c;
+  --gs-color-on-accent: #f2f4f5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --gs-motion-sprite: 0ms;
+    --gs-motion-cut: 0ms;
+    --gs-motion-glitch: 0ms;
+    --gs-motion-mosh: 0ms;
+    --gs-motion-flare: 0ms;
+    --gs-motion-hover: 0ms;
+    --gs-motion-decode: 0ms;
+    --gs-motion-ambient-min: 0ms;
+    --gs-motion-ambient-max: 0ms;
+    --gs-glitch-forced: 0;
+  }
+}
