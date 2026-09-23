@@ -100,6 +100,17 @@ export function getCommands() {
   return [...commands.entries()].flatMap(([app, list]) => list.map((c) => ({ ...c, app })));
 }
 
+// a grid as an svg symbol: one unit rect per lit cell. fill is inherited so currentColor works
+export function gridToSymbol(name, grid) {
+  const rects = [];
+  grid.forEach((row, y) => {
+    [...row].forEach((c, x) => {
+      if (c === '#') rects.push(`<rect x="${x}" y="${y}" width="1" height="1"/>`);
+    });
+  });
+  return `<symbol id="gs-${name}" viewBox="0 0 ${grid[0].length} ${grid.length}" shape-rendering="crispEdges">${rects.join('')}</symbol>`;
+}
+
 const hasDocument = () => typeof document !== 'undefined';
 
 export function glitchLevel() {

@@ -3,6 +3,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { loadTokens, toCss, toSwift, toRust, toMarkdown } from './lib/tokens.js';
+import { buildSprite } from './lib/icons.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -14,6 +15,7 @@ export async function generate() {
     ['gen/GhostSignal.swift', toSwift(tokens)],
     ['gen/ghost_signal.rs', toRust(tokens)],
     ['gen/tokens.md', toMarkdown(tokens)],
+    ['src/icons.svg', await buildSprite(new URL('../src/icons/', import.meta.url))],
   ];
   for (const [rel, body] of outputs) {
     await writeFile(`${root}/${rel}`, body);
