@@ -101,6 +101,7 @@
 
 /* glitch 2 only: chromatic hover split and the pixel hand */
 :root[data-glitch="2"] button:hover, :root[data-glitch="2"] a:hover, :root[data-glitch="2"] .gs-nav-item:hover, :root[data-glitch="2"] gs-row [part="head"]:hover {
+  /* chromatic split, not a drop shadow: zero blur radius, offset only, gated to glitch 2 (spec 3.7) */
   text-shadow: -1px 0 var(--gs-color-glitch-a), 1px 0 var(--gs-color-glitch-b);
 }
 :root[data-glitch="2"] {

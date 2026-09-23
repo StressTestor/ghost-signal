@@ -50,6 +50,21 @@ test('the contrast scanner finds nothing in either file', async () => {
   assert.deepEqual(scanCss(fx, t), []);
 });
 
+test('text-shadow is confined to the glitch-2 hover chroma split, with no blur radius', () => {
+  const hasTextShadow = (r) => /(^|;)\s*text-shadow:/.test(r.body);
+  assert.equal(cssRules(base).filter(hasTextShadow).length, 0);
+  const shadowRules = cssRules(fx).filter(hasTextShadow);
+  assert.ok(shadowRules.length >= 1);
+  for (const r of shadowRules) {
+    assert.match(r.selector, /\[data-glitch="2"\]/, r.selector);
+    const decl = r.body.match(/text-shadow:\s*([^;]+);/)[1];
+    for (const shadow of decl.split(',').map((s) => s.trim())) {
+      const parts = shadow.split(/\s+/);
+      assert.equal(parts.length, 3, shadow); // offset-x offset-y color: no third length (blur radius)
+    }
+  }
+});
+
 test('the texture tokens live in fx.css as data uris and no hex appears outside them', () => {
   assert.match(fx, /--gs-dither:\s*url\("data:image\/svg\+xml,/);
   assert.match(fx, /--gs-dither-strong:/);
