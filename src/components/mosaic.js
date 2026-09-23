@@ -129,6 +129,8 @@ export class GsMosaic extends Base {
     ctx.clearRect(0, 0, c.width, c.height);
     const colors = this.#colors();
     if (this.mode === 'ascii') {
+      // glyph rasterization rides the platform's monospace fallback, so ascii output is not
+      // pixel-stable across operating systems (¬‿¬) never pin an ascii hash in a snapshot
       ctx.font = `${cell + gap}px ui-monospace, Menlo, monospace`;
       ctx.textBaseline = 'top';
       for (let y = 0; y < rows; y++) {
@@ -164,6 +166,7 @@ export class GsMosaic extends Base {
     this.dataset.drawn = String(this.#drawn);
   }
 
+  // only dot mode is pixel-stable across platforms, that's what the pinned snapshots cover XX
   hash() {
     return this.#canvas === null ? '' : this.#canvas.toDataURL('image/png');
   }
