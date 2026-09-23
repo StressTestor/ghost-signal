@@ -14,6 +14,19 @@ async function hashFor(page, status) {
   return page.evaluate(() => document.getElementById('face').hash());
 }
 
+// both pages declare <gs-face status="idle"> statically, so on load the browser upgrades an
+// already-attributed element: attributeChangedCallback fires before connectedCallback has
+// built #mosaic. a regression here throws "Cannot set properties of null (setting 'grid')".
+for (const path of ['/test/e2e/pages/face.html', '/test/e2e/pages/face-motion.html']) {
+  test(`declarative markup on ${path} upgrades with no page errors`, async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.goto(path);
+    await page.waitForSelector('#face gs-mosaic[data-drawn]');
+    expect(errors).toEqual([]);
+  });
+}
+
 test('every status has a pinned hash, ok equals idle, six are distinct, the face stays green', async ({ page }) => {
   await page.goto('/test/e2e/pages/face.html');
   await page.waitForSelector('#face gs-mosaic[data-drawn]');
@@ -61,9 +74,9 @@ test('an unregistered expression override falls back to the status', async ({ pa
 });
 
 test.describe('reduced motion', () => {
-  // this pinned playwright build has no top-level `reducedMotion` fixture shortcut
-  // (unlike current playwright, it isn't in @playwright/test's built-in use() list),
-  // so the override has to go through the generic contextOptions escape hatch instead
+  // reducedMotion is only reachable through contextOptions (or page.emulateMedia) in
+  // playwright, not a top-level use() option in any version, so it goes through the
+  // generic contextOptions escape hatch here
   test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
   test('forces glitch 0, never blinks, never glitches, runs no animation', async ({ page }) => {

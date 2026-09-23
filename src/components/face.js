@@ -39,7 +39,11 @@ export class GsFace extends Base {
   }
 
   attributeChangedCallback() {
-    if (this.isConnected) this.draw();
+    // during custom-element upgrade the browser fires attributeChangedCallback for every
+    // attribute already on the tag BEFORE connectedCallback runs, so #mosaic can still be
+    // null here. isConnected is true at that point too, so it alone doesn't guard this.
+    // skip and let connectedCallback's own draw() do the first render once #mosaic exists
+    if (this.#mosaic !== null && this.isConnected) this.draw();
   }
 
   get status() {
