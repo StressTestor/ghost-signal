@@ -65,8 +65,8 @@ test/e2e                  playwright specs, pages/, fixtures/, __snapshots__/
   through the platform's monospace font fallback, so its hash is never pinned. `gs-decode` and
   ambient glitch use `GS.seed` / `GS.random`.
 - components are light dom. every component module guards `HTMLElement` and
-  `customElements.define` so node can import it. `base.css` is complete after task 5; component
-  rules key on `[part]`, `data-status`, `open`, `aria-expanded`, `aria-selected`. `.gs-label` and
+  `customElements.define` so node can import it. component rules in `base.css` key on `[part]`,
+  `data-status`, `open`, `aria-expanded`, `aria-selected`. `.gs-label` and
   related chrome classes lowercase their text, but `.gs-kaomoji` opts back out of that
   transform, since a kaomoji's case is part of its meaning (`>:D` is not `>:d`).
 - flavors override a fixed allow-list (`accent2 {dark,light}`, `display`, `texture`, `sprite`,
@@ -84,11 +84,11 @@ test/e2e                  playwright specs, pages/, fixtures/, __snapshots__/
 
 none. the generator, cli, gallery server and test suite all run with no environment configuration.
 `GS_REPO` and `DEST` are the only env-driven inputs in the repo, and both belong to
-`scripts/sync-ghost-signal.sh`, a consumer-side convenience script, not to ghost-signal itself.
+`scripts/sync-ghost-signal.sh`, a consumer-side convenience script for vendoring a release.
 
 ## deployment / ci
 
-no deployment: this repo ships source, not a running service. `.github/workflows/ci.yml` runs on
+no deployment: this repo ships source for consumers to import or vendor. `.github/workflows/ci.yml` runs on
 push to `main` and on every pull request, `ubuntu-latest`, and every action is pinned to a full
 commit sha with the version in a trailing comment:
 
@@ -137,11 +137,11 @@ or `gallery/`.
   top-level option is a no-op on the pinned `@playwright/test` 1.58.2. fix: use
   `test.use({ contextOptions: { reducedMotion: 'reduce' } })` instead, as every reduced-motion
   describe block in `test/e2e/*.spec.js` does.
-- problem: `npm run e2e` launches a different browser locally than on ci. cause: the local machine
-  only has `chromium_headless_shell` cached (from a prior `npx playwright install`), while ci runs
-  `npx playwright install --with-deps chromium` for the full chromium binary. fix: none needed, both
-  satisfy `browserName: 'chromium'` in `playwright.config.js`; know which one ran when debugging a
-  rendering difference between a local pass and a ci failure.
+- problem: a local e2e run and a ci run can exercise a different chromium binary. cause: `@playwright/test`
+  runs its default headless mode through `chromium_headless_shell` locally, while ci's
+  `npx playwright install --with-deps chromium` installs and runs full chromium. fix: none needed,
+  both satisfy `browserName: 'chromium'` in `playwright.config.js`; know which one ran when
+  debugging a rendering difference between a local pass and a ci failure.
 - problem: `flavor build` throws instead of writing files. cause: it runs `check` internally first.
   fix: read the reported line, fix the manifest or flavor file, re-run.
 - problem: `gs-decode` renders empty text. cause: its text only comes from the `text` attribute;

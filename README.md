@@ -86,8 +86,8 @@ npx ghost-signal flavor build flavor.json --out src/theme --gs-import ghost-sign
 `check` validates the schema, the `ghostSignal` range against the installed version, accent2
 contrast on void, surface and raised in both themes, every referenced grid, and rejects any js file
 that defines a `gs-*` element. `accent2` in `flavor.json` is `{ "dark": "#hex", "light": "#hex" }`,
-not a single color, because one hex can't clear 4.5:1 on both a near-black and a near-white canvas
-and the checker tests both. `flavor build` writes `flavor.css` (the `[data-app="<id>"]` block) and
+one hex per theme: a single hex can't clear 4.5:1 contrast on both a near-black and a near-white
+canvas, and the checker tests both. `flavor build` writes `flavor.css` (the `[data-app="<id>"]` block) and
 `flavor.js` (registers expressions, icons, the sprite and copy overrides). exit codes: 0 ok, 1 check
 failed, 2 usage or io error. the reference app is `gallery/apps/probe/`.
 
