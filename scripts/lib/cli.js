@@ -1,7 +1,7 @@
 // check and flavor build, shared by the bin and the tests. every failure is a plain string;
 // the bin turns a non-empty list into exit 1
-import { readFile, readdir } from 'node:fs/promises';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { readFile, readdir, stat } from 'node:fs/promises';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { loadTokens } from './tokens.js';
 import { ratio } from './contrast.js';
 import { validate, satisfies } from './schema.js';
@@ -66,13 +66,36 @@ async function checkApp(a, dir) {
     const r = await check(join(dir, a.flavor));
     errors.push(...r.errors.map((e) => `flavor: ${e}`));
   }
-  const files = await readdir(dir, { recursive: true });
-  for (const rel of files.sort()) {
-    if (rel.endsWith('.js') === false || rel.includes('node_modules')) continue;
+  for (const rel of (await appSources(dir)).sort()) {
     const src = await readFile(join(dir, rel), 'utf8');
-    if (DEFINE_RE.test(src)) errors.push(`${relative(dir, join(dir, rel))}: defines a gs-* custom element; the gs- prefix is reserved`);
+    if (DEFINE_RE.test(src)) errors.push(`${rel.split(sep).join('/')}: defines a gs-* custom element; the gs- prefix is reserved`);
   }
   return errors;
+}
+
+// the app's own source only: dependency, build and vcs dirs are skipped by name, and so is any
+// vendored ghost-signal copy (VERSION + src/gs.js, what sync-ghost-signal.sh writes), since the
+// core components defining gs-* is the whole point of them. the app's own dir is never skipped
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'target', '.git']);
+const SOURCE_RE = /\.(js|mjs|ts)$/;
+
+async function isGhostSignalCopy(path) {
+  const has = (rel) => stat(join(path, rel)).then((s) => s.isFile(), () => false);
+  return (await has('VERSION')) && (await has(join('src', 'gs.js')));
+}
+
+async function appSources(root, rel = '') {
+  const out = [];
+  for (const entry of await readdir(join(root, rel), { withFileTypes: true })) {
+    const child = join(rel, entry.name);
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name) || await isGhostSignalCopy(join(root, child))) continue;
+      out.push(...await appSources(root, child));
+    } else if (entry.isFile() && SOURCE_RE.test(entry.name)) {
+      out.push(child);
+    }
+  }
+  return out;
 }
 
 export async function check(file) {

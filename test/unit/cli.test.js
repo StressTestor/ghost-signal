@@ -43,6 +43,21 @@ test('an app that defines a gs- element fails', async () => {
   assert.deepEqual(r.errors, ['rogue.js: defines a gs-* custom element; the gs- prefix is reserved']);
 });
 
+test('an app with a vendored ghost-signal copy and build output passes', async () => {
+  // vendor/ghost-signal holds VERSION + src/gs.js (what sync-ghost-signal.sh writes); dist, build
+  // and target hold bundles. every one of them defines gs-* and none of them is the app's code
+  assert.deepEqual(await check(f('vendored-app/app.json')), { ok: true, kind: 'app', errors: [] });
+});
+
+test('a rogue define in .ts or .mjs fails, and a bare VERSION file does not hide it', async () => {
+  const r = await check(f('rogue-ts/app.json'));
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.errors, [
+    'lib/rogue.mjs: defines a gs-* custom element; the gs- prefix is reserved',
+    'rogue.ts: defines a gs-* custom element; the gs- prefix is reserved',
+  ]);
+});
+
 test('flavorBuild emits the data-app css block, a light block and a js registration module', async () => {
   const { css, js, id } = await flavorBuild(f('probe-fixture/flavor.json'), { gsImport: '../../src' });
   assert.equal(id, 'probe');
