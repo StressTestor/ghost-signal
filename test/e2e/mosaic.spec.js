@@ -5,9 +5,19 @@ import { readFile } from 'node:fs/promises';
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 const fixture = async (name) => (await readFile(new URL(`./fixtures/${name}.grid`, import.meta.url), 'utf8')).trim().split('\n');
 
+// every spec that loads a page asserts zero page errors, so an upgrade-time throw can't hide
+// behind a mosaic that renders anyway. collected per test, asserted after each one
+let errors = [];
+
 test.beforeEach(async ({ page }) => {
+  errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto('/test/e2e/pages/mosaic.html');
   await page.waitForSelector('gs-mosaic#e[data-drawn]');
+});
+
+test.afterEach(() => {
+  expect(errors).toEqual([]);
 });
 
 test('identical grids hash identical and the hashes are pinned', async ({ page }) => {
