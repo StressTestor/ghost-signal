@@ -23,7 +23,7 @@ function assertSlot(slot) {
 
 export function setCopy(slot, text) {
   assertSlot(slot);
-  if (typeof text !== 'string') throw new TypeError(`ghost-signal: copy for "${slot}" must be a string`);
+  if (typeof text === 'string' === false) throw new TypeError(`ghost-signal: copy for "${slot}" must be a string`);
   overrides.set(slot, text);
 }
 
