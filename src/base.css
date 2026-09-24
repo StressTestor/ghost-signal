@@ -221,7 +221,7 @@ gs-window [part="titlebar"] {
   text-transform: lowercase;
   color: var(--gs-color-text);
 }
-gs-window [part="close"] { padding: 0 var(--gs-space-2); font-family: var(--gs-font-mono); line-height: 1.4; }
+gs-window [part="close"] { padding: var(--gs-space-1) var(--gs-space-2); line-height: 0; }
 gs-window [part="body"] { padding: var(--gs-space-4); }
 
 gs-toast { position: fixed; right: var(--gs-space-4); bottom: var(--gs-space-4); display: flex; flex-direction: column; gap: var(--gs-space-2); z-index: 90; width: min(360px, calc(100vw - 2 * var(--gs-space-4))); }

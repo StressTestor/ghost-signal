@@ -1,5 +1,7 @@
 // retro os popup. modal, traps tab, escape closes, title bar in the display font.
 // the element's own children become the body on first connect
+import { injectIcons } from '../gs.js';
+
 const Base = globalThis.HTMLElement ?? class {};
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -55,7 +57,10 @@ export class GsWindow extends Base {
     this.#closeButton.setAttribute('part', 'close');
     this.#closeButton.setAttribute('data-variant', 'ghost');
     this.#closeButton.setAttribute('aria-label', 'close');
-    this.#closeButton.textContent = 'x';
+    // the close pixel glyph from the shared sprite. injectIcons is idempotent, so a page that never
+    // called it still gets #gs-close, and one that did keeps its single sprite
+    injectIcons();
+    this.#closeButton.innerHTML = '<svg class="gs-icon" aria-hidden="true"><use href="#gs-close"/></svg>';
     this.#closeButton.addEventListener('click', () => this.close());
     bar.append(this.#title, this.#closeButton);
     this.#frame.setAttribute('aria-labelledby', this.#title.id);

@@ -95,3 +95,21 @@ test('an unknown status becomes warn with a console error', async ({ page }) => 
   await expect(page.locator('#toasts [part="item"]')).toHaveAttribute('data-status', 'warn');
   expect(errors.some((e) => e.includes('unknown status'))).toBe(true);
 });
+
+test('the close button is the close pixel glyph from the shared sprite, labelled close', async ({ page }) => {
+  await page.evaluate(() => document.getElementById('w').open());
+  const close = await page.evaluate(() => {
+    const b = document.querySelector('#w [part="close"]');
+    const use = b.querySelector('svg.gs-icon use');
+    const box = b.querySelector('svg.gs-icon').getBoundingClientRect();
+    return {
+      label: b.getAttribute('aria-label'),
+      text: b.textContent.trim(),
+      href: use?.getAttribute('href') ?? null,
+      symbol: document.querySelector('svg[data-gs-icons] symbol#gs-close') !== null,
+      size: [box.width, box.height],
+    };
+  });
+  // the page never calls injectIcons itself: gs-window makes sure the glyph it draws exists
+  expect(close).toEqual({ label: 'close', text: '', href: '#gs-close', symbol: true, size: [16, 16] });
+});
