@@ -153,7 +153,7 @@ export function toSwift(t) {
     `        public static let wordmark = Font.custom("Doto", size: ${px(t.size.wordmark)}).weight(.black)`,
     `        public static let title = Font.system(size: ${px(t.size.title)}, weight: .semibold)`,
     `        public static let body = Font.system(size: ${px(t.size.body)})`,
-    `        public static let label = Font.system(size: ${px(t.size.label)}).smallCaps()`,
+    `        public static let label = Font.system(size: ${px(t.size.label)})`,
     `        public static let mono = Font.system(size: ${px(t.size.mono)}, design: .monospaced)`,
     '    }',
     '',

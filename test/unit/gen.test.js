@@ -28,6 +28,9 @@ test('toSwift emits a GhostSignal enum with Theme, Fonts and Status', async () =
   assert.match(swift, /accent: Color\(\.sRGB, red: 0\.0549, green: 0\.7608, blue: 0\.1412, opacity: 1\)/);
   assert.match(swift, /textMuted: Color\(/);
   assert.match(swift, /public static let wordmark = Font\.custom\("Doto", size: 34\)\.weight\(\.black\)/);
+  // spec 3.3: labels are lowercase like the rest of the chrome, so no small caps
+  assert.match(swift, /public static let label = Font\.system\(size: 11\)\n/);
+  assert.doesNotMatch(swift, /smallCaps/);
   assert.match(swift, /public static let s1: CGFloat = 4/);
   assert.match(swift, /public enum Status: String, CaseIterable \{/);
   assert.match(swift, /case \.crash: return theme\.bypass/);

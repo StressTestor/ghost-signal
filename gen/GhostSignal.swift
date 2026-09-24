@@ -69,7 +69,7 @@ public enum GhostSignal {
         public static let wordmark = Font.custom("Doto", size: 34).weight(.black)
         public static let title = Font.system(size: 18, weight: .semibold)
         public static let body = Font.system(size: 13)
-        public static let label = Font.system(size: 11).smallCaps()
+        public static let label = Font.system(size: 11)
         public static let mono = Font.system(size: 12, design: .monospaced)
     }
 
