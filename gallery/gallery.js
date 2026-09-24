@@ -1,6 +1,6 @@
 // the by-eye surface. renders every component in every status, wires the theme and glitch
 // switches, mounts the probe app through the plug-in contract and nothing else (｡◕‿↼)
-import { GS, STATUSES, registerCommands, registerSprite, registerIcon, gridToSymbol, getIcon, startAmbient } from '../src/gs.js';
+import { GS, STATUSES, registerCommands, registerSprite, injectIcons, listIcons, startAmbient } from '../src/gs.js';
 import { KAOMOJI } from '../src/expressions.js';
 import { copy } from '../src/copy.js';
 import '../src/components/mosaic.js';
@@ -56,21 +56,15 @@ window.gallery = {
   },
 };
 
-// icons: the core sprite inline, then app icons appended as symbols
-async function injectIcons() {
-  const svg = await (await fetch('../src/icons.svg')).text();
-  document.body.insertAdjacentHTML('afterbegin', svg);
-  const names = [...document.querySelectorAll('body > svg symbol')].map((s) => s.id.slice(3));
-  for (const name of names) {
+// icons: gs.js registered the core twenty on import; injectIcons writes the sprite they draw from
+function renderIcons() {
+  injectIcons();
+  for (const name of listIcons()) {
     const card = el('span', { class: 'gs-chip' });
     card.insertAdjacentHTML('afterbegin', `<svg class="gs-icon"><use href="#gs-${name}"/></svg>`);
     card.append(name);
     $('#icon-grid').append(card);
   }
-}
-
-function addIconSymbol(name) {
-  $('body > svg').insertAdjacentHTML('beforeend', gridToSymbol(name, getIcon(name)));
 }
 
 function renderStatuses() {
@@ -128,7 +122,8 @@ async function mountProbe() {
   });
   const flavor = await import('./apps/probe/flavor.js');
   registerCommands(app.id, app.commands);
-  addIconSymbol('sigil');
+  // flavor.js registered the probe's sigil; the same call that wrote the core sprite adds it
+  injectIcons();
   const section = $('#probe');
   section.dataset.app = flavor.app;
   const grid = el('div', { class: 'grid' });
@@ -149,16 +144,11 @@ async function mountProbe() {
 
 renderStatuses();
 wireChrome();
-await injectIcons();
+renderIcons();
 registerSprite('checks', ['#...', '.#..', '..#.', '...#']);
-registerIcon('ghost', [...document.querySelectorAll('#gs-ghost rect')].reduce((rows, r) => {
-  const y = Number(r.getAttribute('y'));
-  const x = Number(r.getAttribute('x'));
-  rows[y] = rows[y].slice(0, x) + '#' + rows[y].slice(x + 1);
-  return rows;
-}, Array.from({ length: 16 }, () => '.'.repeat(16))));
 // wallpaper is imported last, after its sprites exist: defining the element upgrades the two
-// static wallpapers in index.html on the spot, and an unregistered sprite name throws
+// static wallpapers in index.html on the spot, and an unregistered sprite name throws. "ghost"
+// is a core icon, registered by gs.js itself
 await import('../src/components/wallpaper.js');
 await mountProbe();
 stopAmbient = startAmbient();

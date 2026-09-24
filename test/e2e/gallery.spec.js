@@ -39,6 +39,28 @@ test('the probe app plugs in with no core change', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('one sprite holds every registered icon, core and app, and re-injecting is idempotent', async ({ page }) => {
+  const errors = await open(page);
+  const state = await page.evaluate(async () => {
+    const { injectIcons, listIcons } = await import('/src/gs.js');
+    const first = injectIcons();
+    const again = injectIcons();
+    return {
+      same: first === again,
+      sprites: document.querySelectorAll('svg[data-gs-icons]').length,
+      symbols: [...first.querySelectorAll('symbol')].map((s) => s.id).sort(),
+      registered: listIcons().map((n) => `gs-${n}`),
+    };
+  });
+  expect(state.same).toBe(true);
+  expect(state.sprites).toBe(1);
+  expect(state.symbols).toEqual(state.registered);
+  expect(state.symbols).toContain('gs-ghost');
+  expect(state.symbols).toContain('gs-sigil');
+  expect(state.symbols).toHaveLength(21);
+  expect(errors).toEqual([]);
+});
+
 test('doto is served from the bundle and used by the wordmark', async ({ page }) => {
   await open(page);
   const font = await page.evaluate(async () => {

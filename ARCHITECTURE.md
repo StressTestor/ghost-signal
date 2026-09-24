@@ -31,7 +31,7 @@ file is committed so a consumer can vendor the repo at a tag with no build step 
 ```
 tokens.json               the only authored values
 scripts/
-  gen.js                  writes src/tokens.css gen/* src/icons.svg gallery/apps/probe/flavor.{css,js}
+  gen.js                  writes src/tokens.css gen/* src/icons.{svg,js} gallery/apps/probe/flavor.{css,js}
   check-contrast.js       exit 1 per failing pair or css rule
   ghost-signal.js         cli: check | flavor check | flavor build
   serve.js                static server on 127.0.0.1:4173 serving the repo root
@@ -40,10 +40,10 @@ scripts/
   lib/                    tokens.js contrast.js icons.js schema.js cli.js
 schema/                   app.v1.json flavor.v1.json
 src/
-  tokens.css base.css fx.css icons.svg
+  tokens.css base.css fx.css icons.svg icons.js (generated)
   icons/*.grid            twenty 16x16 glyph sources
   fonts/                  Doto-VariableFont.woff2 (~8.7kb) OFL.txt SOURCE
-  gs.js expressions.js copy.js
+  gs.js grid.js expressions.js copy.js
   components/             mosaic face decode tape window toast row container empty error splash wallpaper palette (13 modules)
 gen/                      GhostSignal.swift ghost_signal.rs tokens.md
 gallery/                  index.html gallery.js apps/probe/ screenshots/ (gitignored)
@@ -64,6 +64,13 @@ test/e2e                  playwright specs, pages/, fixtures/, __snapshots__/
   `test/e2e/__snapshots__/`. only dot mode is pixel-stable across platforms: ascii mode rasterizes
   through the platform's monospace font fallback, so its hash is never pinned. `gs-decode` and
   ambient glitch use `GS.seed` / `GS.random`.
+- icons live in one registry. `src/icons.js` is generated data (no imports) and `gs.js` registers
+  all twenty core grids from it on import, so `getIcon('ghost')` and `<gs-wallpaper sprite="ghost">`
+  work with nothing hand-registered. `injectIcons(root = document.body)` writes one hidden
+  `svg[data-gs-icons]` sprite of every registered icon (core + app) through `gridToSymbol`, and
+  rewrites it only when the registry changed. `gen.js` reads grids through `src/grid.js` (no
+  imports) and loads `cli.js`, which pulls in `gs.js`, only after writing `src/icons.js`, so a
+  checkout missing that file still regenerates.
 - a canvas reads its colors only when it renders, so `gs.js` keeps one `MutationObserver` on
   `<html>`'s `data-theme` (created on the first `watchTheme`, never without a document) and
   repaints every connected `gs-mosaic`; mosaics `watchTheme` on connect and `unwatchTheme` on
@@ -125,7 +132,7 @@ or `gallery/`.
   element's internals already exist dereferences nothing. fix: every attribute handler returns early
   (no throw) until `connectedCallback` has built the element's internals.
 - problem: a generated file has been hand edited. cause: someone edited `src/tokens.css`, `gen/*`,
-  `src/icons.svg` or a probe flavor file directly instead of `tokens.json` or a grid file. fix:
+  `src/icons.svg`, `src/icons.js` or a probe flavor file directly instead of `tokens.json` or a grid file. fix:
   revert the generated file, edit the real source, run `npm run gen`; ci catches this with
   `git diff --exit-code`.
 - problem: a pinned face or mosaic hash differs on ci but the screenshot looks identical. cause: the

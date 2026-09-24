@@ -2,6 +2,11 @@
 // importable from node (no DOM access at module scope beyond a guarded init) so the unit
 // tests and the cli share it with the browser. they ALL import eventually XX
 
+import { GsGridError, parseGrid, gridToSymbol } from './grid.js';
+import { CORE_ICONS } from './icons.js';
+
+export { GsGridError, parseGrid, gridToSymbol };
+
 export const STATUSES = Object.freeze(['idle', 'working', 'ok', 'warn', 'deny', 'bypass', 'crash']);
 export const CORE_EXPRESSION_NAMES = Object.freeze([...STATUSES, 'blink']);
 
@@ -15,9 +20,6 @@ export function coerceStatus(s) {
   return 'warn';
 }
 
-export class GsGridError extends Error {
-  constructor(message) { super(message); this.name = 'GsGridError'; }
-}
 export class GsCoreExpressionError extends Error {
   constructor(message) { super(message); this.name = 'GsCoreExpressionError'; }
 }
@@ -41,19 +43,6 @@ export const GS = Object.freeze({
   seed(n) { rng = mulberry32(n >>> 0); },
   random() { return rng(); },
 });
-
-export function parseGrid(textOrRows, cols, rows) {
-  const raw = Array.isArray(textOrRows) ? textOrRows : String(textOrRows).split(/[\n/]/);
-  const lines = raw.map((r) => String(r).trim()).filter((r) => r.length > 0);
-  const width = cols ?? (lines[0]?.length ?? 0);
-  const height = rows ?? lines.length;
-  if (lines.length !== height) throw new GsGridError(`expected ${height} rows, got ${lines.length}`);
-  lines.forEach((line, i) => {
-    if (line.length !== width) throw new GsGridError(`row ${i} has ${line.length} cells, expected ${width}`);
-    if (/^[.#]+$/.test(line) === false) throw new GsGridError(`row ${i} has a character other than . or #`);
-  });
-  return lines;
-}
 
 const expressions = new Map();
 const icons = new Map();
@@ -79,6 +68,8 @@ export function getIcon(name) {
 export function listIcons() {
   return [...icons.keys()].sort();
 }
+// the twenty core glyphs, registered on import so an app icon and a core icon live in one store
+for (const [name, grid] of Object.entries(CORE_ICONS)) registerIcon(name, grid);
 
 export function registerSprite(name, grid) {
   sprites.set(name, parseGrid(grid));
@@ -100,18 +91,34 @@ export function getCommands() {
   return [...commands.entries()].flatMap(([app, list]) => list.map((c) => ({ ...c, app })));
 }
 
-// a grid as an svg symbol: one unit rect per lit cell. fill is inherited so currentColor works
-export function gridToSymbol(name, grid) {
-  const rects = [];
-  grid.forEach((row, y) => {
-    [...row].forEach((c, x) => {
-      if (c === '#') rects.push(`<rect x="${x}" y="${y}" width="1" height="1"/>`);
-    });
-  });
-  return `<symbol id="gs-${name}" viewBox="0 0 ${grid[0].length} ${grid.length}" shape-rendering="crispEdges">${rects.join('')}</symbol>`;
-}
-
 const hasDocument = () => typeof document !== 'undefined';
+
+// every registered icon (core + app) as one hidden svg sprite under root, so <use href="#gs-name">
+// resolves. safe to call again after more registerIcon calls: it rewrites the sprite only when
+// the registry changed. returns the sprite, or null with no document
+const spriteMarkup = new WeakMap();
+
+export function injectIcons(root) {
+  if (hasDocument() === false) return null;
+  const host = root ?? document.body;
+  if (host === null || host === undefined) return null;
+  let svg = host.querySelector(':scope > svg[data-gs-icons]');
+  if (svg === null) {
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('data-gs-icons', '');
+    svg.setAttribute('width', '0');
+    svg.setAttribute('height', '0');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.style.position = 'absolute';
+    host.prepend(svg);
+  }
+  const markup = listIcons().map((name) => gridToSymbol(name, icons.get(name))).join('');
+  if (spriteMarkup.get(svg) !== markup) {
+    svg.innerHTML = markup;
+    spriteMarkup.set(svg, markup);
+  }
+  return svg;
+}
 
 // canvases paint their colors once per render, so a live data-theme flip leaves them stale.
 // one observer on <html> repaints every watched element (gs-mosaic registers on connect and

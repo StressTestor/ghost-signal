@@ -15,7 +15,9 @@ spec: `docs/superpowers/specs/2026-09-23-ghost-signal-design.md`.
 | `src/base.css` | doto font-face, native controls, `.gs-panel .gs-chip .gs-dot .gs-nav-item .gs-sticker .gs-label .gs-wordmark`, component rules |
 | `src/fx.css` | dither, glitch slice, mosh, flare, tape scroll, corrupt corners, pixel cursor. all gated on `data-glitch` |
 | `src/icons.svg` | twenty 16x16 pixel glyphs as `<symbol id="gs-<name>">` |
-| `src/gs.js` | statuses, `GS.seed`, grid parsing, registries, fx helpers |
+| `src/icons.js` | the same twenty grids as data. `gs.js` registers them on import |
+| `src/gs.js` | statuses, `GS.seed`, grid parsing, registries, `injectIcons`, fx helpers |
+| `src/grid.js` | `parseGrid` and `gridToSymbol` with no imports (re-exported by `gs.js`) |
 | `src/components/*.js` | `gs-mosaic gs-face gs-decode gs-tape gs-window gs-toast gs-row gs-empty gs-error gs-splash gs-wallpaper gs-palette` |
 | `gen/GhostSignal.swift` | swiftui colors, fonts, spacing, status |
 | `gen/ghost_signal.rs` | ratatui `Color::Rgb` consts per theme and a `Status` enum |
@@ -38,6 +40,11 @@ import { GS, registerCommands } from 'ghost-signal/gs.js';
 ```
 
 then `<html data-theme="dark" data-glitch="1" data-app="seance">` and `<gs-face status="idle"></gs-face>`.
+
+icons: core and app icons share one registry. `registerIcon(name, grid16x16)` adds one, and
+`injectIcons()` writes a hidden sprite of every registered icon into `<body>` so
+`<svg class="gs-icon"><use href="#gs-<name>"/></svg>` resolves. call it again after a flavor
+registers more; it rewrites the sprite only when the registry changed.
 
 ## use it without a bundler (agora)
 
@@ -110,7 +117,7 @@ levels, and the probe app. `window.gallery.setTheme('light')`, `window.gallery.s
 
 ```sh
 npm ci
-npm run gen        # tokens.json -> css, swift, rust, md, icons.svg, probe flavor
+npm run gen        # tokens.json -> css, swift, rust, md; icon grids -> icons.svg, icons.js; probe flavor
 npm test           # node:test
 npm run check      # contrast over tokens and css
 npm run e2e        # playwright against scripts/serve.js

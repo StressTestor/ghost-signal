@@ -60,7 +60,10 @@ test('icons and sprites register by name', () => {
   const icon = Array.from({ length: 16 }, () => '.#'.repeat(8));
   registerIcon('sigil', icon);
   assert.deepEqual(getIcon('sigil'), icon);
-  assert.deepEqual(listIcons(), ['sigil']);
+  // the twenty core icons are registered on import, so the app icon joins them, sorted
+  assert.equal(listIcons().length, 21);
+  assert.ok(listIcons().includes('sigil'));
+  assert.deepEqual(listIcons(), [...listIcons()].sort());
   assert.throws(() => registerIcon('bad', icon.slice(0, 15)), GsGridError);
   registerSprite('probe', ['#..', '.#.', '..#']);
   assert.deepEqual(getSprite('probe'), ['#..', '.#.', '..#']);
