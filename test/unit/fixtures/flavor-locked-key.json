@@ -1,0 +1,7 @@
+{
+  "$schema": "https://ghost-signal.local/schema/flavor.v1.json",
+  "app": "locked",
+  "ghostSignal": "^0.1",
+  "accent": "#00ff00",
+  "motion": { "glitch": "0ms" }
+}

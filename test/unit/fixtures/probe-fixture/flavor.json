@@ -1,0 +1,12 @@
+{
+  "$schema": "https://ghost-signal.local/schema/flavor.v1.json",
+  "app": "probe",
+  "ghostSignal": "^0.1",
+  "accent2": { "dark": "#b78bff", "light": "#6b2fc9" },
+  "display": "\"Iowan Old Style\", Palatino, Georgia, serif",
+  "texture": "dither",
+  "sprite": "./sprites/sheet.grid",
+  "expressions": { "haunting": "./expressions/haunting.grid" },
+  "icons": { "sigil": "./icons/sigil.grid" },
+  "copy": { "empty": "the spirits are quiet", "loading": "listening on the bridge" }
+}
