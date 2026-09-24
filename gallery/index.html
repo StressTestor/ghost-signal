@@ -14,6 +14,10 @@
     section { display: grid; gap: var(--gs-space-3); }
     .grid { display: flex; gap: var(--gs-space-3); flex-wrap: wrap; align-items: center; }
     .face-card { display: grid; gap: var(--gs-space-1); justify-items: center; }
+    /* the flex .grid row lets empty/error/splash shrink to their content, so the splash card
+       (no text, just a wallpaper) collapses to ~100px wide; give the three containers equal
+       width instead so the wallpaper has a real box to size itself from */
+    #states .grid { display: grid; grid-template-columns: repeat(3, 1fr); }
     .sidebar { display: grid; width: 220px; background-color: var(--gs-color-surface); border: var(--gs-border); border-radius: var(--gs-radius-panel); padding: var(--gs-space-2) 0; }
     gs-row { background-color: var(--gs-color-surface); }
   </style>
@@ -92,9 +96,9 @@
   <section id="states">
     <h2>empty, error, splash</h2>
     <div class="grid">
-      <gs-empty><gs-wallpaper sprite="checks" cols="24" rows="6"></gs-wallpaper></gs-empty>
+      <gs-empty><gs-wallpaper sprite="checks"></gs-wallpaper></gs-empty>
       <gs-error></gs-error>
-      <gs-splash><gs-wallpaper sprite="ghost" cols="24" rows="6"></gs-wallpaper></gs-splash>
+      <gs-splash><gs-wallpaper sprite="ghost"></gs-wallpaper></gs-splash>
     </div>
   </section>
 

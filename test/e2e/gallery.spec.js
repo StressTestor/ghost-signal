@@ -65,6 +65,64 @@ test('every status renders on every gallery face and the chrome switches work', 
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor)).toBe('rgb(242, 244, 245)');
 });
 
+test('kaomoji in the face labels keep their case despite .gs-label lowercasing', async ({ page }) => {
+  await open(page);
+  const bypass = await page.locator('#face-grid gs-face[status="bypass"] + .gs-label').evaluate((el) => el.innerText);
+  const crash = await page.locator('#face-grid gs-face[status="crash"] + .gs-label').evaluate((el) => el.innerText);
+  expect(bypass).toContain('>:D');
+  expect(crash).toContain('XX');
+});
+
+test('wallpaper fills its container edge to edge instead of a fixed patch pinned in the corner', async ({ page }) => {
+  await open(page);
+  for (const selector of ['#states gs-empty gs-wallpaper', '#states gs-splash gs-wallpaper', '#probe-empty gs-wallpaper']) {
+    const coverage = await page.locator(selector).evaluate((wp) => {
+      const box = wp.getBoundingClientRect();
+      const canvas = wp.querySelector('canvas').getBoundingClientRect();
+      return { w: canvas.width / box.width, h: canvas.height / box.height };
+    });
+    expect(coverage.w, `${selector} width coverage`).toBeGreaterThanOrEqual(0.9);
+    expect(coverage.h, `${selector} height coverage`).toBeGreaterThanOrEqual(0.9);
+  }
+});
+
+test('setGlitch(0) stops the wallpaper stepping without a remount', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => window.GS.seed(1));
+  await page.evaluate(() => window.gallery.setGlitch(1));
+  await page.waitForTimeout(300);
+  await page.evaluate(() => window.gallery.setGlitch(0));
+  const step0 = await page.locator('#states gs-splash gs-wallpaper').getAttribute('data-step');
+  await page.waitForTimeout(600);
+  const step1 = await page.locator('#states gs-splash gs-wallpaper').getAttribute('data-step');
+  expect(step1).toBe(step0);
+});
+
+test('bypass and crash toasts do not double their kaomoji', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => window.gallery.toast('bypass'));
+  const bypassItem = page.locator('#toasts [part="item"][data-status="bypass"]').first();
+  await expect(bypassItem.locator('[part="kaomoji"]')).toHaveCount(0);
+  // the decode scramble settles left to right, so ">:D" at the end of the string is the last
+  // thing to land; wait for it rather than racing the animation
+  await expect(bypassItem).toContainText('>:D');
+  const bypassText = await bypassItem.evaluate((el) => el.innerText);
+  expect((bypassText.match(/>:D/g) ?? []).length).toBe(1);
+  await page.evaluate(() => window.gallery.toast('crash'));
+  const crashItem = page.locator('#toasts [part="item"][data-status="crash"]').first();
+  await expect(crashItem.locator('[part="kaomoji"]')).toHaveCount(1);
+});
+
+test('the states row lays out in equal columns so the splash container is not collapsed to its content', async ({ page }) => {
+  await open(page);
+  const widths = await page.locator('#states .grid > *').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width));
+  expect(widths).toHaveLength(3);
+  const [empty, error, splash] = widths;
+  expect(splash).toBeGreaterThan(150);
+  expect(Math.abs(splash - empty)).toBeLessThan(2);
+  expect(Math.abs(splash - error)).toBeLessThan(2);
+});
+
 test('ambient glitch fires on a data-gs-ambient element at glitch 1', async ({ page }) => {
   await open(page);
   const hit = await page.evaluate(() => new Promise((resolve) => {

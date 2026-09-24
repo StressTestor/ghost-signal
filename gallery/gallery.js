@@ -42,7 +42,12 @@ window.gallery = {
   toast(status) {
     const slot = `${status}Toast`;
     const text = ['deny', 'bypass', 'crash'].includes(status) ? copy(slot) : `${status} toast`;
-    document.dispatchEvent(new CustomEvent('gs-toast', { detail: { status, text, kaomoji: KAOMOJI[status] } }));
+    // some copy slots already end in a kaomoji (bypassToast ends in ">:D", denyToast in "XX");
+    // appending the status's own kaomoji on top doubles it, so skip the argument when the text
+    // already carries one
+    const detail = { status, text };
+    if (Object.values(KAOMOJI).some((k) => text.trimEnd().endsWith(k)) === false) detail.kaomoji = KAOMOJI[status];
+    document.dispatchEvent(new CustomEvent('gs-toast', { detail }));
   },
   ambient(options) {
     stopAmbient();
@@ -71,7 +76,11 @@ function addIconSymbol(name) {
 function renderStatuses() {
   for (const s of STATUSES) {
     const card = el('div', { class: 'face-card' });
-    card.append(el('gs-face', { status: s, 'data-gallery': '' }), el('span', { class: 'gs-label' }, `${s} ${KAOMOJI[s]}`));
+    // .gs-label lowercases everything, which turns ">:D" into ">:d"; the kaomoji's case is the
+    // point, so it lives in its own span that opts back out (.gs-kaomoji in base.css)
+    const label = el('span', { class: 'gs-label' });
+    label.append(`${s} `, el('span', { class: 'gs-kaomoji' }, KAOMOJI[s]));
+    card.append(el('gs-face', { status: s, 'data-gallery': '' }), label);
     $('#face-grid').append(card);
     $('#status-grid').append(el('span', { class: 'gs-dot', 'data-status': s }), el('span', { class: 'gs-chip', 'data-status': s }, s));
     const b = el('button', { 'data-status-pick': s }, s);
@@ -128,7 +137,7 @@ async function mountProbe() {
   const accent = el('span', { id: 'probe-accent', class: 'gs-chip', style: 'color: var(--gs-color-accent-2)' }, 'accent2');
   accent.insertAdjacentHTML('afterbegin', '<svg class="gs-icon"><use href="#gs-sigil"/></svg>');
   const empty = el('gs-empty', { id: 'probe-empty' });
-  empty.append(el('gs-wallpaper', { sprite: app.id, cols: '24', rows: '6' }));
+  empty.append(el('gs-wallpaper', { sprite: app.id }));
   const art = el('gs-mosaic', { cols: '12', rows: '12', text: 'art\n in\n  a\n   c\n    c\n     e\n      n\n       t\n        2' });
   art.setAttribute('lit', getComputedStyle(section).getPropertyValue('--gs-color-accent-2').trim());
   grid.append(expressionFace, statusFace, accent, art, empty);

@@ -93,6 +93,12 @@ textarea { resize: vertical; min-height: 4em; }
   color: var(--gs-color-text-muted);
 }
 
+/* a kaomoji's case is part of its meaning (>:D is not >:d): opt back out of the lowercasing
+   that .gs-label and friends apply to everything else (¬‿¬) */
+.gs-kaomoji {
+  text-transform: none;
+}
+
 .gs-wordmark {
   font-family: var(--gs-font-display);
   font-weight: 900;
