@@ -18,7 +18,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '26'
+          # 24, not 26: playwright 1.58.2's browser extraction hangs forever under node 26
+          node-version: '24'
           cache: npm
       - run: npm ci
       - name: generated files are current

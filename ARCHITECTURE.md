@@ -162,12 +162,12 @@ or `gallery/`.
   attribute write re-renders synchronously, so for one render the mosaic holds a grid smaller than
   its new `cols x rows`. a full-page screenshot reflows the page and triggers it. fix: `render()`
   reads `grid[y]?.[x]`, so cells past the old grid draw unlit until the wallpaper sets the new grid.
-- problem: `playwright install chromium` hangs (ci sat 27 minutes on it in pr #1; a local install
-  stalled at a 428K partial the same day). cause: the full chromium download stalls, and a default
-  headless run never uses that binary anyway. fix: ci runs `playwright install --with-deps
-  --only-shell chromium` under a step timeout, and local runs use the installed
-  `chromium_headless_shell`. only a headed run or `channel: 'chromium'` in `playwright.config.js`
-  needs full chromium.
+- problem: `playwright install chromium` downloads to 100% and then never exits (ci hung 27 and 8
+  minutes in pr #1; locally it left a 1.5M partial browser dir). cause: `@playwright/test` 1.58.2's
+  archive extraction hangs under node 26. under node 24.21 the same install finishes in about 6s.
+  fix: ci runs on node 24 with `playwright install --with-deps --only-shell chromium` under a step
+  timeout. locally, install browsers with node 24 (`npx -y node@24 node_modules/playwright/cli.js
+  install --only-shell chromium`); running the tests on node 26 afterwards is fine.
 - problem: `flavor build` throws instead of writing files. cause: it runs `check` internally first.
   fix: read the reported line, fix the manifest or flavor file, re-run.
 - problem: `gs-decode` renders empty text. cause: its text only comes from the `text` attribute;
