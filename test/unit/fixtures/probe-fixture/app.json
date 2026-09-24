@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ghost-signal.local/schema/app.v1.json",
+  "id": "probe",
+  "name": "probe",
+  "version": "0.1.0",
+  "ghostSignal": "^0.1",
+  "flavor": "./flavor.json",
+  "entry": "./index.html",
+  "status": { "kind": "event", "name": "probe:status" },
+  "commands": [
+    { "id": "probe.tests", "title": "run tests", "shortcut": "t" },
+    { "id": "probe.list", "title": "list files", "shortcut": "l" }
+  ],
+  "icon": "ghost"
+}

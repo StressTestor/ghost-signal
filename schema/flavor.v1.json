@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghost-signal.local/schema/flavor.v1.json",
+  "title": "ghost signal flavor v1",
+  "type": "object",
+  "required": ["app", "ghostSignal"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "app": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "ghostSignal": { "type": "string", "pattern": "^(\\^\\d+\\.\\d+|~\\d+\\.\\d+\\.\\d+|\\d+\\.\\d+\\.\\d+)$" },
+    "accent2": {
+      "type": "object",
+      "required": ["dark", "light"],
+      "additionalProperties": false,
+      "properties": {
+        "dark": { "type": "string", "pattern": "^#[0-9a-f]{6}$" },
+        "light": { "type": "string", "pattern": "^#[0-9a-f]{6}$" }
+      }
+    },
+    "display": { "type": "string" },
+    "texture": { "enum": ["dither", "none"] },
+    "sprite": { "type": "string" },
+    "expressions": { "type": "object", "additionalProperties": { "type": "string" } },
+    "icons": { "type": "object", "additionalProperties": { "type": "string" } },
+    "copy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "empty": { "type": "string" },
+        "loading": { "type": "string" },
+        "error": { "type": "string" },
+        "denyToast": { "type": "string" },
+        "bypassToast": { "type": "string" },
+        "crashToast": { "type": "string" },
+        "confirm": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://ghost-signal.local/schema/app.v1.json",
+  "id": "rogue",
+  "name": "rogue",
+  "version": "0.1.0",
+  "ghostSignal": "^0.1",
+  "entry": "./index.html",
+  "status": { "kind": "event", "name": "rogue:status" },
+  "commands": [
+    { "id": "probe.tests", "title": "run tests", "shortcut": "t" },
+    { "id": "probe.list", "title": "list files", "shortcut": "l" }
+  ],
+  "icon": "ghost"
+}

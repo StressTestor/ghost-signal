@@ -194,7 +194,10 @@ one renderer for every dotted or ascii image in the system. it draws to a canvas
 - lit cell color is `--gs-color-accent`, hot center `--gs-color-accent-bloom`, unlit
   `--gs-color-accent-dim` at 25%. a flavor may set `lit` to its second accent for non-face art.
 - images are thresholded with an ordered bayer dither. there is no random number generator inside
-  this component. same input, same output, always. this is what makes the snapshot test possible.
+  this component, so the same input gives the same output. in dot mode (integer-aligned rects) that
+  output is pixel-stable across platforms, which is what makes the snapshot test possible. ascii
+  mode rasterizes glyphs through the platform's monospace fonts, so its pixels vary by platform and
+  its hash is never pinned.
 
 ### 4.2 `<gs-face>`
 
@@ -406,8 +409,9 @@ fires bypass and crash, and asserts `document.getAnimations()` is empty and `dat
 
 `<gs-mosaic>` has no rng. `<gs-decode>` and ambient glitch use a seeded prng exposed as
 `GS.seed(n)`; tests call `GS.seed(1)` before screenshots. the mosaic snapshot test renders the
-face in all seven statuses plus two reference grid fixtures and compares canvas `toDataURL()` hashes
-to committed values.
+face in all seven statuses plus two reference grid fixtures and compares canvas hashes to committed
+values. a hash is `<width>x<height>:<fnv-1a of the canvas's getImageData rgba bytes>`, so the png
+encoder is not part of it.
 
 ### 9.4 placement
 

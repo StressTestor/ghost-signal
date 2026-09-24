@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>gs-decode and gs-tape</title>
+  <link rel="stylesheet" href="../../../src/tokens.css">
+  <link rel="stylesheet" href="../../../src/base.css">
+  <link rel="stylesheet" href="../../../src/fx.css">
+  <script type="module">
+    import { GS } from '../../../src/gs.js';
+    import '../../../src/components/decode.js';
+    import '../../../src/components/tape.js';
+    window.GS = GS;
+  </script>
+</head>
+<body>
+  <gs-decode id="d" text="ghost signal"></gs-decode>
+  <gs-decode id="inline">from content</gs-decode>
+  <gs-tape id="t" text="zero chill detected"></gs-tape>
+  <gs-tape id="t2" text="live" status="ok"></gs-tape>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "name": "ghost-signal",
+  "version": "0.1.0",
+  "description": "design system for joe's guis: tokens, css, web components, plug-in contract",
+  "type": "module",
+  "license": "MIT",
+  "repository": "github:StressTestor/ghost-signal",
+  "files": ["src", "gen", "schema", "scripts", "tokens.json"],
+  "exports": {
+    ".": "./src/gs.js",
+    "./package.json": "./package.json",
+    "./*": "./src/*"
+  },
+  "bin": {
+    "ghost-signal": "./scripts/ghost-signal.js"
+  },
+  "scripts": {
+    "test": "node --test 'test/unit/**/*.test.js'",
+    "gen": "node scripts/gen.js",
+    "check": "node scripts/check-contrast.js",
+    "e2e": "playwright test",
+    "serve": "node scripts/serve.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2"
+  }
+}

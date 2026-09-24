@@ -1,0 +1,11 @@
+{
+  "$schema": "https://ghost-signal.local/schema/flavor.v1.json",
+  "app": "probe",
+  "ghostSignal": "^0.1",
+  "accent2": { "dark": "#b78bff", "light": "#6b2fc9" },
+  "texture": "dither",
+  "sprite": "./sprites/probe.grid",
+  "expressions": { "probing": "./expressions/probing.grid" },
+  "icons": { "sigil": "./icons/sigil.grid" },
+  "copy": { "empty": "probe is listening. nothing has pinged yet" }
+}

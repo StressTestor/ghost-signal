@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" data-glitch="0">
+<head>
+  <meta charset="utf-8">
+  <title>gs-mosaic</title>
+  <link rel="stylesheet" href="../../../src/tokens.css">
+  <link rel="stylesheet" href="../../../src/base.css">
+  <script type="module">
+    import { GS } from '../../../src/gs.js';
+    import '../../../src/components/mosaic.js';
+    window.GS = GS;
+  </script>
+</head>
+<body>
+  <gs-mosaic id="a" cols="8" rows="8"></gs-mosaic>
+  <gs-mosaic id="b" cols="8" rows="8"></gs-mosaic>
+  <gs-mosaic id="c" cols="8" rows="8" mode="ascii"></gs-mosaic>
+  <gs-mosaic id="d" cols="8" rows="8"></gs-mosaic>
+  <gs-mosaic id="e" cols="4" rows="2" grid="#..#/.##."></gs-mosaic>
+</body>
+</html>

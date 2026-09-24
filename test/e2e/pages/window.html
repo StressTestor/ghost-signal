@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>gs-window and gs-toast</title>
+  <link rel="stylesheet" href="../../../src/tokens.css">
+  <link rel="stylesheet" href="../../../src/base.css">
+  <link rel="stylesheet" href="../../../src/fx.css">
+  <script type="module">
+    import { GS } from '../../../src/gs.js';
+    import '../../../src/components/window.js';
+    import '../../../src/components/toast.js';
+    window.GS = GS;
+  </script>
+</head>
+<body>
+  <button id="opener">open</button>
+  <gs-window id="w" heading="confirm">
+    <p>run it?</p>
+    <button id="yes" data-variant="primary">yes</button>
+    <button id="no">no</button>
+  </gs-window>
+  <gs-toast id="toasts"></gs-toast>
+</body>
+</html>

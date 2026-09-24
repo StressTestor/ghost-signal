@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghost-signal.local/schema/app.v1.json",
+  "title": "ghost signal app manifest v1",
+  "type": "object",
+  "required": ["id", "name", "version", "ghostSignal", "entry", "status", "commands"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "ghostSignal": { "type": "string", "pattern": "^(\\^\\d+\\.\\d+|~\\d+\\.\\d+\\.\\d+|\\d+\\.\\d+\\.\\d+)$" },
+    "flavor": { "type": "string" },
+    "entry": { "type": "string" },
+    "status": {
+      "type": "object",
+      "required": ["kind", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["event"] },
+        "name": { "type": "string" }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+\\.[a-z0-9.-]+$" },
+          "title": { "type": "string" },
+          "shortcut": { "type": "string" }
+        }
+      }
+    },
+    "icon": { "type": "string" }
+  }
+}

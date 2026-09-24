@@ -1,0 +1,6 @@
+{
+  "$schema": "https://ghost-signal.local/schema/flavor.v1.json",
+  "app": "dim",
+  "ghostSignal": "^0.1",
+  "accent2": { "dark": "#3a2a5a", "light": "#c9c0dd" }
+}

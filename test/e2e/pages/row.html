@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>gs-row and containers</title>
+  <link rel="stylesheet" href="../../../src/tokens.css">
+  <link rel="stylesheet" href="../../../src/base.css">
+  <link rel="stylesheet" href="../../../src/fx.css">
+  <script type="module">
+    // first module: register the sprite before any element that needs it is defined
+    import { GS, registerSprite } from '../../../src/gs.js';
+    registerSprite('checks', ['#..', '.#.', '..#']);
+    window.GS = GS;
+  </script>
+  <script type="module">
+    // second module: defining gs-wallpaper upgrades the static one in the body, which reads the sprite
+    import '../../../src/components/row.js';
+    import '../../../src/components/empty.js';
+    import '../../../src/components/error.js';
+    import '../../../src/components/splash.js';
+    import '../../../src/components/wallpaper.js';
+    window.ready = true;
+  </script>
+</head>
+<body>
+  <gs-row id="r1" status="ok" label="cargo test" command="cargo test --workspace" sigil="+">42 passed</gs-row>
+  <gs-row id="r2" status="loose" label="listing" command="ls -la"></gs-row>
+  <gs-row id="r3" status="haunted" label="unknown"></gs-row>
+  <gs-empty id="empty"><gs-wallpaper id="wp" sprite="checks" cols="9" rows="3"></gs-wallpaper></gs-empty>
+  <gs-error id="error"></gs-error>
+  <gs-splash id="splash"><span part="copy">custom line</span></gs-splash>
+  <div class="gs-panel" id="panel"></div>
+</body>
+</html>

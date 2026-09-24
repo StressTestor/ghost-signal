@@ -1,0 +1,113 @@
+/* ghost signal fx layer. every animation is gated on :root[data-glitch="1"] or "2".
+   under reduced motion the motion tokens are 0ms and gs.js forces data-glitch="0", so nothing here runs 👻 */
+
+:root {
+  --gs-dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'%3E%3Cg fill='%23fff'%3E%3Crect x='1' y='0' width='1' height='1' opacity='.5'/%3E%3Crect x='2' y='0' width='1' height='1' opacity='.125'/%3E%3Crect x='3' y='0' width='1' height='1' opacity='.625'/%3E%3Crect x='0' y='1' width='1' height='1' opacity='.75'/%3E%3Crect x='1' y='1' width='1' height='1' opacity='.25'/%3E%3Crect x='2' y='1' width='1' height='1' opacity='.875'/%3E%3Crect x='3' y='1' width='1' height='1' opacity='.375'/%3E%3Crect x='0' y='2' width='1' height='1' opacity='.1875'/%3E%3Crect x='1' y='2' width='1' height='1' opacity='.6875'/%3E%3Crect x='2' y='2' width='1' height='1' opacity='.0625'/%3E%3Crect x='3' y='2' width='1' height='1' opacity='.5625'/%3E%3Crect x='0' y='3' width='1' height='1' opacity='.9375'/%3E%3Crect x='1' y='3' width='1' height='1' opacity='.4375'/%3E%3Crect x='2' y='3' width='1' height='1' opacity='.8125'/%3E%3Crect x='3' y='3' width='1' height='1' opacity='.3125'/%3E%3C/g%3E%3C/svg%3E");
+  --gs-dither-strong: var(--gs-dither);
+  --gs-block-corner: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6' shape-rendering='crispEdges' fill='%23fff'%3E%3Crect x='0' y='0' width='2' height='2'/%3E%3Crect x='4' y='0' width='2' height='2'/%3E%3Crect x='2' y='2' width='2' height='2'/%3E%3Crect x='0' y='4' width='2' height='2'/%3E%3Crect x='4' y='4' width='2' height='2'/%3E%3C/svg%3E");
+}
+
+/* the light canvas needs a dark dither or it vanishes */
+:root[data-theme="light"] {
+  --gs-dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'%3E%3Cg fill='%23000'%3E%3Crect x='1' y='0' width='1' height='1' opacity='.5'/%3E%3Crect x='2' y='0' width='1' height='1' opacity='.125'/%3E%3Crect x='3' y='0' width='1' height='1' opacity='.625'/%3E%3Crect x='0' y='1' width='1' height='1' opacity='.75'/%3E%3Crect x='1' y='1' width='1' height='1' opacity='.25'/%3E%3Crect x='2' y='1' width='1' height='1' opacity='.875'/%3E%3Crect x='3' y='1' width='1' height='1' opacity='.375'/%3E%3Crect x='0' y='2' width='1' height='1' opacity='.1875'/%3E%3Crect x='1' y='2' width='1' height='1' opacity='.6875'/%3E%3Crect x='2' y='2' width='1' height='1' opacity='.0625'/%3E%3Crect x='3' y='2' width='1' height='1' opacity='.5625'/%3E%3Crect x='0' y='3' width='1' height='1' opacity='.9375'/%3E%3Crect x='1' y='3' width='1' height='1' opacity='.4375'/%3E%3Crect x='2' y='3' width='1' height='1' opacity='.8125'/%3E%3Crect x='3' y='3' width='1' height='1' opacity='.3125'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* dither overlays: static texture, no animation, allowed at every glitch level */
+.gs-dither, .gs-dither-strong { position: relative; }
+.gs-dither::before, .gs-dither-strong::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--gs-dither);
+  background-size: 4px 4px;
+  opacity: 0.06;
+}
+.gs-dither-strong::before { background-image: var(--gs-dither-strong); opacity: 0.18; }
+
+/* glitch slice: the element shifts, and two clipped copies of its text in the glitch colors
+   displace in 3 steps */
+:root[data-glitch="1"] .gs-glitch, :root[data-glitch="2"] .gs-glitch {
+  position: relative;
+  animation: gs-glitch-shift var(--gs-motion-glitch) var(--gs-step-glitch) 1;
+}
+/* glitchOnce puts the element's text in data-t for the glitch's length. no data-t, no copies,
+   and the copies carry no fill of their own so they never box over the text underneath */
+:root[data-glitch="1"] .gs-glitch[data-t]::before, :root[data-glitch="2"] .gs-glitch[data-t]::before,
+:root[data-glitch="1"] .gs-glitch[data-t]::after, :root[data-glitch="2"] .gs-glitch[data-t]::after {
+  content: attr(data-t);
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: none;
+}
+:root[data-glitch="1"] .gs-glitch[data-t]::before, :root[data-glitch="2"] .gs-glitch[data-t]::before {
+  color: var(--gs-color-glitch-a);
+  clip-path: inset(0 0 55% 0);
+  animation: gs-glitch-a var(--gs-motion-glitch) var(--gs-step-glitch) 1;
+}
+:root[data-glitch="1"] .gs-glitch[data-t]::after, :root[data-glitch="2"] .gs-glitch[data-t]::after {
+  color: var(--gs-color-glitch-b);
+  clip-path: inset(45% 0 0 0);
+  animation: gs-glitch-b var(--gs-motion-glitch) var(--gs-step-glitch) 1;
+}
+@keyframes gs-glitch-shift { 0% { transform: translateX(-2px); } 50% { transform: translateX(2px); } 100% { transform: translateX(0); } }
+@keyframes gs-glitch-a { 0% { transform: translateX(-4px); } 50% { transform: translateX(3px); } 100% { transform: translateX(0); } }
+@keyframes gs-glitch-b { 0% { transform: translateX(4px); } 50% { transform: translateX(-3px); } 100% { transform: translateX(0); } }
+
+/* datamosh smear on crash: 6 hard steps of vertical slicing */
+:root[data-glitch="1"] .gs-mosh, :root[data-glitch="2"] .gs-mosh {
+  animation: gs-mosh var(--gs-motion-mosh) var(--gs-step-mosh) 1;
+}
+@keyframes gs-mosh {
+  0% { clip-path: inset(0 0 0 0); transform: translate(0, 0); }
+  20% { clip-path: inset(10% 0 60% 0); transform: translate(6px, 0); }
+  40% { clip-path: inset(50% 0 20% 0); transform: translate(-5px, 0); }
+  60% { clip-path: inset(30% 0 30% 0); transform: translate(3px, 0); }
+  80% { clip-path: inset(70% 0 0 0); transform: translate(-2px, 0); }
+  100% { clip-path: inset(0 0 0 0); transform: translate(0, 0); }
+}
+
+/* deny flare on a row: the bar and background flash in 8 steps */
+:root[data-glitch="1"] .gs-flare, :root[data-glitch="2"] .gs-flare {
+  animation: gs-flare var(--gs-motion-flare) var(--gs-step-flare) 1;
+}
+@keyframes gs-flare {
+  0% { background-color: var(--gs-color-deny); }
+  25% { background-color: transparent; }
+  50% { background-color: var(--gs-color-deny); }
+  100% { background-color: transparent; }
+}
+
+/* tape scroll: the track holds the text twice, so -50% is seamless. static at glitch 0 */
+:root[data-glitch="1"] gs-tape [part="track"], :root[data-glitch="2"] gs-tape [part="track"] {
+  animation: gs-tape-scroll calc(var(--gs-motion-sprite) * 12) steps(48) infinite;
+}
+@keyframes gs-tape-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* corrupt corners: 6x6 block fragments masked in the glitch colors. opt-in per panel at 1, every panel at 2 */
+.gs-panel[data-corrupt]::before, .gs-panel[data-corrupt]::after,
+:root[data-glitch="2"] .gs-panel::before, :root[data-glitch="2"] .gs-panel::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+  -webkit-mask-image: var(--gs-block-corner);
+  mask-image: var(--gs-block-corner);
+  -webkit-mask-size: 6px 6px;
+  mask-size: 6px 6px;
+}
+.gs-panel[data-corrupt]::before, :root[data-glitch="2"] .gs-panel::before { top: -1px; left: -1px; background-color: var(--gs-color-glitch-a); }
+.gs-panel[data-corrupt]::after, :root[data-glitch="2"] .gs-panel::after { right: -1px; bottom: -1px; background-color: var(--gs-color-glitch-b); }
+
+/* glitch 2 only: chromatic hover split and the pixel hand */
+:root[data-glitch="2"] button:hover, :root[data-glitch="2"] a:hover, :root[data-glitch="2"] .gs-nav-item:hover, :root[data-glitch="2"] gs-row [part="head"]:hover {
+  /* chromatic split, not a drop shadow: zero blur radius, offset only, gated to glitch 2 (spec 3.7) */
+  text-shadow: -1px 0 var(--gs-color-glitch-a), 1px 0 var(--gs-color-glitch-b);
+}
+:root[data-glitch="2"] {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M6 1h3v1h1v5h1v-1h2v1h1v1h1v5h-1v2h-1v1h-6v-1h-1v-2h-1v-2h-1v-3h2v1h1v-7h-1z'/%3E%3Cpath fill='%23fff' d='M7 2h1v7h1v-2h1v2h1v-1h1v1h1v1h1v3h-1v2h-1v1h-5v-1h-1v-2h-1v-2h-1v-2h1v1h1v-1h1z'/%3E%3C/svg%3E") 6 1, auto;
+}
+:root[data-glitch="2"] button, :root[data-glitch="2"] a, :root[data-glitch="2"] [part="head"], :root[data-glitch="2"] [part="row"] { cursor: inherit; }
