@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-glitch="1">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ghost signal gallery</title>
+  <link rel="stylesheet" href="../src/tokens.css">
+  <link rel="stylesheet" href="../src/base.css">
+  <link rel="stylesheet" href="../src/fx.css">
+  <style>
+    body { padding: var(--gs-space-5); display: grid; gap: var(--gs-space-5); max-width: 1100px; margin: 0 auto; }
+    header { display: flex; align-items: center; gap: var(--gs-space-4); flex-wrap: wrap; }
+    header nav { display: flex; gap: var(--gs-space-1); flex-wrap: wrap; }
+    section { display: grid; gap: var(--gs-space-3); }
+    .grid { display: flex; gap: var(--gs-space-3); flex-wrap: wrap; align-items: center; }
+    .face-card { display: grid; gap: var(--gs-space-1); justify-items: center; }
+    .sidebar { display: grid; width: 220px; background-color: var(--gs-color-surface); border: var(--gs-border); border-radius: var(--gs-radius-panel); padding: var(--gs-space-2) 0; }
+    gs-row { background-color: var(--gs-color-surface); }
+  </style>
+  <script type="module" src="./gallery.js"></script>
+</head>
+<body>
+  <header>
+    <gs-face id="hero-face" status="idle" data-gallery></gs-face>
+    <div>
+      <div class="gs-wordmark" data-gs-ambient><gs-decode id="wordmark" text="ghost signal"></gs-decode></div>
+      <span class="gs-label">every component, every status, both themes, three glitch levels</span>
+    </div>
+    <nav aria-label="theme">
+      <button data-theme-pick="dark">dark</button>
+      <button data-theme-pick="light">light</button>
+    </nav>
+    <nav aria-label="glitch">
+      <button data-glitch-pick="0">glitch 0</button>
+      <button data-glitch-pick="1">glitch 1</button>
+      <button data-glitch-pick="2">glitch 2</button>
+    </nav>
+  </header>
+
+  <section id="faces"><h2>faces</h2><div class="grid" id="face-grid"></div></section>
+
+  <section id="status"><h2>dots and chips</h2><div class="grid" id="status-grid"></div><nav aria-label="set status" class="grid" id="status-buttons"></nav></section>
+
+  <section id="controls">
+    <h2>native controls</h2>
+    <div class="grid">
+      <button>default</button>
+      <button data-variant="primary">primary</button>
+      <button data-variant="ghost">ghost</button>
+      <button data-variant="danger">danger</button>
+      <button disabled>disabled</button>
+      <input placeholder="filter" aria-label="filter">
+      <select aria-label="pick"><option>one</option><option>two</option></select>
+      <textarea aria-label="notes" rows="2">notes</textarea>
+      <span class="gs-sticker">for science</span>
+      <span class="gs-sticker" style="--gs-tilt: 3deg">zero chill</span>
+    </div>
+  </section>
+
+  <section id="panels">
+    <h2>panels and nav</h2>
+    <div class="grid">
+      <div class="gs-panel"><h2>panel</h2><span class="gs-label">label</span><p>body text on surface.</p></div>
+      <div class="gs-panel" data-corrupt><h2>corrupt panel</h2><p>corners opt in at glitch 1.</p></div>
+      <div class="sidebar">
+        <a class="gs-nav-item" href="#panels" aria-current="page"><svg class="gs-icon"><use href="#gs-watch"/></svg>watch</a>
+        <a class="gs-nav-item" href="#panels"><svg class="gs-icon"><use href="#gs-filter"/></svg>filter</a>
+        <a class="gs-nav-item" href="#panels"><svg class="gs-icon"><use href="#gs-settings"/></svg>settings</a>
+      </div>
+    </div>
+    <div class="grid" id="icon-grid"></div>
+  </section>
+
+  <section id="rows"><h2>rows</h2><div id="row-list"></div></section>
+
+  <section id="chrome">
+    <h2>tape, toasts, window, palette</h2>
+    <gs-tape text="zero chill detected"></gs-tape>
+    <gs-tape text="live" status="ok"></gs-tape>
+    <div class="grid" id="toast-buttons"></div>
+    <div class="grid">
+      <button id="open-window">open window</button>
+      <button id="open-palette">palette (ctrl+k)</button>
+    </div>
+    <gs-window id="window" heading="confirm">
+      <p>run the thing?</p>
+      <button data-variant="primary" id="window-yes">yes</button>
+      <button id="window-no">no</button>
+    </gs-window>
+  </section>
+
+  <section id="states">
+    <h2>empty, error, splash</h2>
+    <div class="grid">
+      <gs-empty><gs-wallpaper sprite="checks" cols="24" rows="6"></gs-wallpaper></gs-empty>
+      <gs-error></gs-error>
+      <gs-splash><gs-wallpaper sprite="ghost" cols="24" rows="6"></gs-wallpaper></gs-splash>
+    </div>
+  </section>
+
+  <section id="probe"><h2>probe (plug-in test app)</h2></section>
+
+  <gs-toast id="toasts"></gs-toast>
+  <gs-palette id="palette"></gs-palette>
+</body>
+</html>

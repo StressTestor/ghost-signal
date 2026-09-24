@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { loadTokens, toCss, toSwift, toRust, toMarkdown } from './lib/tokens.js';
 import { buildSprite } from './lib/icons.js';
+import { flavorBuild } from './lib/cli.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -17,6 +18,11 @@ export async function generate() {
     ['gen/tokens.md', toMarkdown(tokens)],
     ['src/icons.svg', await buildSprite(new URL('../src/icons/', import.meta.url))],
   ];
+  const probe = await flavorBuild(`${root}gallery/apps/probe/flavor.json`, { gsImport: '../../../src' });
+  outputs.push(
+    ['gallery/apps/probe/flavor.css', probe.css],
+    ['gallery/apps/probe/flavor.js', probe.js],
+  );
   for (const [rel, body] of outputs) {
     await writeFile(`${root}/${rel}`, body);
     process.stdout.write(`wrote ${rel}\n`);
