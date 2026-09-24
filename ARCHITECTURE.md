@@ -116,7 +116,7 @@ commit sha with the version in a trailing comment:
 | `actions/upload-artifact` | `b7c566a772e6b6bfb58ed0dc250532a479d7789f` | v6.0.0 |
 
 steps: `npm ci` -> `npm run gen && git diff --exit-code` (generated files must already be current)
--> `npm test` -> `npm run check` -> `npx playwright install --with-deps chromium` -> `npm run e2e`
+-> `npm test` -> `npm run check` -> `npx playwright install --with-deps --only-shell chromium` -> `npm run e2e` (job capped at 20 minutes)
 -> upload `gallery/screenshots` as an artifact (`if: always()`, ignored if absent). releasing is a
 git tag (`v0.1.0`) pushed to `origin`; consumers pin to it via `github:StressTestor/ghost-signal#v0.1.0`
 or `scripts/sync-ghost-signal.sh`.
@@ -162,12 +162,12 @@ or `gallery/`.
   attribute write re-renders synchronously, so for one render the mosaic holds a grid smaller than
   its new `cols x rows`. a full-page screenshot reflows the page and triggers it. fix: `render()`
   reads `grid[y]?.[x]`, so cells past the old grid draw unlit until the wallpaper sets the new grid.
-- problem: someone assumes ci renders with full chromium while local runs use the headless shell.
-  cause: on `@playwright/test` 1.58.2, `npx playwright install --with-deps chromium` installs both
-  `chromium` and `chromium_headless_shell`, and a default headless run uses the headless shell, so
-  local and ci both render through `chromium_headless_shell`. fix: none needed; only a headed run
-  or `channel: 'chromium'` in `playwright.config.js` would switch to full chromium, so check for
-  one of those before blaming the binary for a local pass that fails on ci.
+- problem: `playwright install chromium` hangs (ci sat 27 minutes on it in pr #1; a local install
+  stalled at a 428K partial the same day). cause: the full chromium download stalls, and a default
+  headless run never uses that binary anyway. fix: ci runs `playwright install --with-deps
+  --only-shell chromium` under a step timeout, and local runs use the installed
+  `chromium_headless_shell`. only a headed run or `channel: 'chromium'` in `playwright.config.js`
+  needs full chromium.
 - problem: `flavor build` throws instead of writing files. cause: it runs `check` internally first.
   fix: read the reported line, fix the manifest or flavor file, re-run.
 - problem: `gs-decode` renders empty text. cause: its text only comes from the `text` attribute;

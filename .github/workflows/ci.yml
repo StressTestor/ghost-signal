@@ -11,6 +11,7 @@ permissions:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -27,8 +28,11 @@ jobs:
           test -z "$(git status --porcelain)"
       - run: npm test
       - run: npm run check
-      - run: npx playwright install --with-deps chromium
+      # every test runs headless, so the headless shell is the only browser we need
+      - run: npx playwright install --with-deps --only-shell chromium
+        timeout-minutes: 8
       - run: npm run e2e
+        timeout-minutes: 10
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
