@@ -20,6 +20,14 @@ test('the probe app plugs in with no core change', async ({ page }) => {
   await page.evaluate(() => window.gallery.setTheme('light'));
   const accentLight = await page.locator('#probe').evaluate((el) => getComputedStyle(el).getPropertyValue('--gs-color-accent-2').trim());
   expect(accentLight).toBe('#6b2fc9');
+  // the consumer layout from the readme: data-app on <html> itself, not on a subtree
+  const rootLight = await page.evaluate(() => {
+    document.documentElement.dataset.app = 'probe';
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--gs-color-accent-2').trim();
+    delete document.documentElement.dataset.app;
+    return v;
+  });
+  expect(rootLight).toBe('#6b2fc9');
   await expect(page.locator('#probe-empty gs-decode[part="copy"]')).toHaveText('probe is listening. nothing has pinged yet');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('probe:status', { detail: { status: 'deny' } })));
   await expect(page.locator('#probe-status-face')).toHaveAttribute('data-frame', 'deny');

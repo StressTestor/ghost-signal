@@ -87,7 +87,8 @@ npx ghost-signal flavor build flavor.json --out src/theme --gs-import ghost-sign
 contrast on void, surface and raised in both themes, every referenced grid, and rejects any js file
 that defines a `gs-*` element. `accent2` in `flavor.json` is `{ "dark": "#hex", "light": "#hex" }`,
 one hex per theme: a single hex can't clear 4.5:1 contrast on both a near-black and a near-white
-canvas, and the checker tests both. `flavor build` writes `flavor.css` (the `[data-app="<id>"]` block) and
+canvas, and the checker tests both. `flavor build` writes `flavor.css` (the `[data-app="<id>"]` block, plus
+a light block that matches `data-app` on `<html>` itself or on any element under a light root) and
 `flavor.js` (registers expressions, icons, the sprite and copy overrides). exit codes: 0 ok, 1 check
 failed, 2 usage or io error. the reference app is `gallery/apps/probe/`.
 

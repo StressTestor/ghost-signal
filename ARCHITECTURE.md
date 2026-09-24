@@ -73,7 +73,9 @@ test/e2e                  playwright specs, pages/, fixtures/, __snapshots__/
   `expressions`, `icons`, `copy`); the schema's `additionalProperties: false` rejects everything
   else. `accent2` is a pair of hexes, one per theme, because a single hex can't clear 4.5:1 contrast
   on both a near-black and a near-white canvas and the checker tests both. `flavor build` emits
-  `[data-app="<id>"]` css and a js registration module.
+  `[data-app="<id>"]` css and a js registration module. the light block carries two selectors,
+  `:root[data-theme="light"][data-app="<id>"]` for `data-app` on `<html>` (the consumer layout) and
+  `:root[data-theme="light"] [data-app="<id>"]` for an app mounted in a subtree (the gallery probe).
 - `gs-wallpaper` throws `GsWallpaperPlacementError` outside `gs-empty gs-error gs-splash`. absent
   `cols`/`rows` attributes it sizes itself from its own box (`ResizeObserver`) so it tiles edge to
   edge instead of a fixed patch; `cols`/`rows` are explicit overrides for callers that want a fixed

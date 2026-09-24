@@ -115,7 +115,9 @@ export async function flavorBuild(file, { gsImport = 'ghost-signal' } = {}) {
   if (f.texture === 'none') dark.push('  --gs-dither: none;', '  --gs-dither-strong: none;');
   dark.push('}');
   const light = f.accent2 === undefined ? [] : [
-    `:root[data-theme="light"] [data-app="${id}"] {`,
+    // compound when data-app sits on <html> (the documented consumer layout), descendant when
+    // an app mounts into a subtree of someone else's page (the gallery's probe section)
+    `:root[data-theme="light"][data-app="${id}"], :root[data-theme="light"] [data-app="${id}"] {`,
     `  --gs-color-accent-2: ${f.accent2.light};`,
     '}',
   ];
