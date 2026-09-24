@@ -1,8 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { createHash } from 'node:crypto';
 
 const STATUSES = ['idle', 'working', 'ok', 'warn', 'deny', 'bypass', 'crash'];
-const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 
 async function hashFor(page, status) {
   await page.evaluate((s) => {
@@ -32,7 +30,8 @@ test('every status has a pinned hash, ok equals idle, six are distinct, the face
   await page.waitForSelector('#face gs-mosaic[data-drawn]');
   const hashes = {};
   for (const s of STATUSES) hashes[s] = await hashFor(page, s);
-  for (const s of STATUSES) expect(sha256(hashes[s])).toMatchSnapshot(`face-${s}.txt`);
+  for (const s of STATUSES) expect(hashes[s]).toMatch(/^142x88:[0-9a-f]{8}$/);
+  for (const s of STATUSES) expect(hashes[s]).toMatchSnapshot(`face-${s}.txt`);
   expect(hashes.ok).toBe(hashes.idle);
   expect(new Set(['idle', 'working', 'warn', 'deny', 'bypass', 'crash'].map((s) => hashes[s])).size).toBe(6);
   expect(await page.locator('#face gs-mosaic').getAttribute('lit')).toBeNull();

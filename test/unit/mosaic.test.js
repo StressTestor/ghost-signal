@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BAYER4, bayerThreshold, imageToGrid, textToGrid, GsMosaic } from '../../src/components/mosaic.js';
+import { BAYER4, bayerThreshold, imageToGrid, textToGrid, fnv1a, GsMosaic } from '../../src/components/mosaic.js';
 
 test('the module imports in node and exports the class', () => {
   assert.equal(typeof GsMosaic, 'function');
@@ -40,4 +40,12 @@ test('imageToGrid treats transparent pixels as dark', () => {
 test('textToGrid lights every non-space character and pads or crops to the grid', () => {
   assert.deepEqual(textToGrid('ab\n c', 3, 3), ['##.', '.#.', '...']);
   assert.deepEqual(textToGrid('abcdef', 3, 1), ['###']);
+});
+
+test('fnv1a is the 32-bit fnv-1a of the bytes as 8 hex digits', () => {
+  const bytes = (str) => new TextEncoder().encode(str);
+  assert.equal(fnv1a(bytes('')), '811c9dc5');
+  assert.equal(fnv1a(bytes('a')), 'e40c292c');
+  assert.equal(fnv1a(bytes('foobar')), 'bf9cf968');
+  assert.equal(fnv1a(new Uint8ClampedArray([0, 0, 0, 0])), fnv1a(new Uint8Array(4)));
 });

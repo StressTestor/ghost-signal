@@ -406,8 +406,9 @@ fires bypass and crash, and asserts `document.getAnimations()` is empty and `dat
 
 `<gs-mosaic>` has no rng. `<gs-decode>` and ambient glitch use a seeded prng exposed as
 `GS.seed(n)`; tests call `GS.seed(1)` before screenshots. the mosaic snapshot test renders the
-face in all seven statuses plus two reference grid fixtures and compares canvas `toDataURL()` hashes
-to committed values.
+face in all seven statuses plus two reference grid fixtures and compares canvas hashes to committed
+values. a hash is `<width>x<height>:<fnv-1a of the canvas's getImageData rgba bytes>`, so the png
+encoder is not part of it.
 
 ### 9.4 placement
 

@@ -43,6 +43,16 @@ export function textToGrid(text, cols, rows) {
   return out;
 }
 
+// 32-bit fnv-1a over raw bytes, as 8 hex digits. small, synchronous, no crypto.subtle needed
+export function fnv1a(bytes) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) {
+    h ^= bytes[i];
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
 function blank(cols, rows) {
   return Array.from({ length: rows }, () => '.'.repeat(cols));
 }
@@ -171,9 +181,14 @@ export class GsMosaic extends Base {
     this.dataset.drawn = String(this.#drawn);
   }
 
-  // only dot mode is pixel-stable across platforms, that's what the pinned snapshots cover XX
+  // "<w>x<h>:<fnv-1a of the rgba bytes>". hashing getImageData instead of toDataURL keeps the png
+  // encoder (and its compression settings) out of the pinned value. only dot mode is pixel-stable
+  // across platforms, that's what the pinned snapshots cover XX
   hash() {
-    return this.#canvas === null ? '' : this.#canvas.toDataURL('image/png');
+    if (this.#canvas === null) return '';
+    const { width, height } = this.#canvas;
+    const bytes = width * height === 0 ? [] : this.#canvas.getContext('2d').getImageData(0, 0, width, height).data;
+    return `${width}x${height}:${fnv1a(bytes)}`;
   }
 }
 

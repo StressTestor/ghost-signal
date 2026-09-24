@@ -61,7 +61,9 @@ test/e2e                  playwright specs, pages/, fixtures/, __snapshots__/
   every animation in `fx.css` is gated on `:root[data-glitch="1"]` or `"2"`; reduced motion zeroes
   the motion tokens and `gs.js` forces `data-glitch="0"` on import.
 - `gs-mosaic` has no rng and draws integer-aligned rects, so canvas hashes are pinned in
-  `test/e2e/__snapshots__/`. only dot mode is pixel-stable across platforms: ascii mode rasterizes
+  `test/e2e/__snapshots__/`. `hash()` is `<width>x<height>:<fnv-1a of the getImageData rgba
+  bytes>`, synchronous and free of the png encoder, so a browser changing its compression can't
+  move a pin. the snapshot files hold that string as is. only dot mode is pixel-stable across platforms: ascii mode rasterizes
   through the platform's monospace font fallback, so its hash is never pinned. `gs-decode` and
   ambient glitch use `GS.seed` / `GS.random`.
 - icons live in one registry. `src/icons.js` is generated data (no imports) and `gs.js` registers
@@ -136,9 +138,12 @@ or `gallery/`.
   revert the generated file, edit the real source, run `npm run gen`; ci catches this with
   `git diff --exit-code`.
 - problem: a pinned face or mosaic hash differs on ci but the screenshot looks identical. cause: the
-  png encoder or a font fallback changed, not the grid; ascii-mode canvas text is never pinned for
-  this exact reason. fix: compare `gallery/screenshots` artifacts; if the pixels match, hash
-  `getImageData` bytes instead of the png and re-pin only dot-mode snapshots.
+  hash already covers raw rgba bytes, not png output, so the likely suspect is the unlit cells:
+  they draw at `globalAlpha` 0.25 on a transparent canvas, and `getImageData` un-premultiplies
+  those pixels, which a different canvas backend can round differently. ascii-mode text is never
+  pinned for the same kind of reason (font fallback). fix: compare `gallery/screenshots` artifacts;
+  if only the dim cells differ, draw them opaque (pre-blend the dim color) and re-pin the dot-mode
+  snapshots by deleting them and running `npm run e2e` twice.
 - problem: `npm test` fails with "directory argument not allowed". cause: node 26 rejects a bare
   directory passed to `--test`. fix: the script passes a quoted glob (`'test/unit/**/*.test.js'`);
   keep it quoted.

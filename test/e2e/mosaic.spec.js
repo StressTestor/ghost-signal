@@ -1,8 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
-const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 const fixture = async (name) => (await readFile(new URL(`./fixtures/${name}.grid`, import.meta.url), 'utf8')).trim().split('\n');
 
 // every spec that loads a page asserts zero page errors, so an upgrade-time throw can't hide
@@ -32,11 +30,13 @@ test('identical grids hash identical and the hashes are pinned', async ({ page }
     return ['a', 'b', 'c', 'd'].map((id) => el(id).hash());
   }, [a, b]);
   expect(hashes[0]).toBe(hashes[1]);
-  expect(hashes[0].startsWith('data:image/png;base64,')).toBe(true);
+  // width x height : fnv-1a of the rgba bytes. no png encoder in the loop, so the pin can't drift
+  // with the browser's compression settings
+  expect(hashes[0]).toMatch(/^70x70:[0-9a-f]{8}$/);
   expect(hashes[2]).not.toBe(hashes[0]);
   expect(hashes[3]).not.toBe(hashes[0]);
-  expect(sha256(hashes[0])).toMatchSnapshot('mosaic-ref-a.txt');
-  expect(sha256(hashes[3])).toMatchSnapshot('mosaic-ref-b.txt');
+  expect(hashes[0]).toMatchSnapshot('mosaic-ref-a.txt');
+  expect(hashes[3]).toMatchSnapshot('mosaic-ref-b.txt');
 });
 
 test('the grid attribute uses / as the row separator and re-renders on change', async ({ page }) => {
