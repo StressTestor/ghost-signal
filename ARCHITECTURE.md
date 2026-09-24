@@ -157,11 +157,12 @@ or `gallery/`.
   top-level option is a no-op on the pinned `@playwright/test` 1.58.2. fix: use
   `test.use({ contextOptions: { reducedMotion: 'reduce' } })` instead, as every reduced-motion
   describe block in `test/e2e/*.spec.js` does.
-- problem: a local e2e run and a ci run can exercise a different chromium binary. cause: `@playwright/test`
-  runs its default headless mode through `chromium_headless_shell` locally, while ci's
-  `npx playwright install --with-deps chromium` installs and runs full chromium. fix: none needed,
-  both satisfy `browserName: 'chromium'` in `playwright.config.js`; know which one ran when
-  debugging a rendering difference between a local pass and a ci failure.
+- problem: someone assumes ci renders with full chromium while local runs use the headless shell.
+  cause: on `@playwright/test` 1.58.2, `npx playwright install --with-deps chromium` installs both
+  `chromium` and `chromium_headless_shell`, and a default headless run uses the headless shell, so
+  local and ci both render through `chromium_headless_shell`. fix: none needed; only a headed run
+  or `channel: 'chromium'` in `playwright.config.js` would switch to full chromium, so check for
+  one of those before blaming the binary for a local pass that fails on ci.
 - problem: `flavor build` throws instead of writing files. cause: it runs `check` internally first.
   fix: read the reported line, fix the manifest or flavor file, re-run.
 - problem: `gs-decode` renders empty text. cause: its text only comes from the `text` attribute;

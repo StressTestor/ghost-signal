@@ -194,7 +194,10 @@ one renderer for every dotted or ascii image in the system. it draws to a canvas
 - lit cell color is `--gs-color-accent`, hot center `--gs-color-accent-bloom`, unlit
   `--gs-color-accent-dim` at 25%. a flavor may set `lit` to its second accent for non-face art.
 - images are thresholded with an ordered bayer dither. there is no random number generator inside
-  this component. same input, same output, always. this is what makes the snapshot test possible.
+  this component, so the same input gives the same output. in dot mode (integer-aligned rects) that
+  output is pixel-stable across platforms, which is what makes the snapshot test possible. ascii
+  mode rasterizes glyphs through the platform's monospace fonts, so its pixels vary by platform and
+  its hash is never pinned.
 
 ### 4.2 `<gs-face>`
 
