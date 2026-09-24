@@ -63,3 +63,18 @@ test('lit cells read the accent tokens and a lit attribute overrides them', asyn
   expect(colors.accent).toEqual([178, 252, 186]);
   expect(colors.lit).toEqual([1, 2, 3]);
 });
+
+test('growing rows under a stale grid renders without throwing', async ({ page }) => {
+  // gs-wallpaper sets cols then rows as two attribute writes and only then the matching grid, so
+  // for one render the mosaic holds a grid smaller than its cols x rows. those cells draw unlit
+  const a = await fixture('ref-a');
+  const drawn = await page.evaluate((ra) => {
+    const el = document.getElementById('a');
+    el.grid = ra;
+    const before = Number(el.dataset.drawn);
+    el.setAttribute('cols', '12');
+    el.setAttribute('rows', '12');
+    return [before, Number(el.dataset.drawn)];
+  }, a);
+  expect(drawn[1]).toBe(drawn[0] + 2);
+});

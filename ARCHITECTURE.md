@@ -157,6 +157,11 @@ or `gallery/`.
   top-level option is a no-op on the pinned `@playwright/test` 1.58.2. fix: use
   `test.use({ contextOptions: { reducedMotion: 'reduce' } })` instead, as every reduced-motion
   describe block in `test/e2e/*.spec.js` does.
+- problem: a page error "cannot read properties of undefined (reading '0')" from `GsMosaic.render`
+  during a resize. cause: `gs-wallpaper` writes `cols`, then `rows`, then the matching grid; each
+  attribute write re-renders synchronously, so for one render the mosaic holds a grid smaller than
+  its new `cols x rows`. a full-page screenshot reflows the page and triggers it. fix: `render()`
+  reads `grid[y]?.[x]`, so cells past the old grid draw unlit until the wallpaper sets the new grid.
 - problem: someone assumes ci renders with full chromium while local runs use the headless shell.
   cause: on `@playwright/test` 1.58.2, `npx playwright install --with-deps chromium` installs both
   `chromium` and `chromium_headless_shell`, and a default headless run uses the headless shell, so

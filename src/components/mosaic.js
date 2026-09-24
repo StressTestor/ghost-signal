@@ -135,6 +135,8 @@ export class GsMosaic extends Base {
     if (this.#canvas === null) return;
     const { cols, rows, cell, gap } = this;
     const pitch = cell + gap;
+    // grid can be smaller than cols x rows for one render: an owner resizing (gs-wallpaper) writes
+    // cols, then rows, then the matching grid. cells past the old grid draw unlit until it lands
     const grid = this.grid;
     const c = this.#canvas;
     c.width = cols * pitch - gap;
@@ -150,7 +152,7 @@ export class GsMosaic extends Base {
       ctx.textBaseline = 'top';
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
-          const on = grid[y][x] === '#';
+          const on = grid[y]?.[x] === '#';
           ctx.fillStyle = on ? colors.lit : colors.dim;
           ctx.fillText(on ? '#' : '.', x * pitch, y * pitch);
         }
@@ -161,7 +163,7 @@ export class GsMosaic extends Base {
         for (let x = 0; x < cols; x++) {
           const px = x * pitch;
           const py = y * pitch;
-          if (grid[y][x] === '#') {
+          if (grid[y]?.[x] === '#') {
             ctx.fillStyle = colors.lit;
             ctx.fillRect(px, py, cell, cell);
             if (cell >= 5) {

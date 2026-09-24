@@ -207,7 +207,7 @@ test('glitchOnce hands the text to the slice copies for the glitch and takes it 
 });
 
 test('screenshots per theme and glitch level land in gallery/screenshots', async ({ page }) => {
-  await open(page);
+  const errors = await open(page);
   await page.evaluate(() => window.GS.seed(1));
   for (const theme of ['dark', 'light']) {
     for (const glitch of [0, 1, 2]) {
@@ -216,6 +216,8 @@ test('screenshots per theme and glitch level land in gallery/screenshots', async
       await page.screenshot({ path: `gallery/screenshots/${theme}-glitch${glitch}.png`, fullPage: true });
     }
   }
+  // a full-page capture reflows the page, which resizes every wallpaper mid-run
+  expect(errors).toEqual([]);
 });
 
 test.describe('reduced motion', () => {
