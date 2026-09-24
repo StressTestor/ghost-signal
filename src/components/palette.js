@@ -28,6 +28,8 @@ export class GsPalette extends Base {
   }
 
   #globalKey(e) {
+    // a held ctrl+k auto-repeats keydown; toggling on each one would flicker the palette
+    if (e.repeat) return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       if (this.hasAttribute('open')) this.close();

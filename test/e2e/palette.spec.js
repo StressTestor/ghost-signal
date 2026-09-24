@@ -67,3 +67,23 @@ test('enter dispatches gs-command with id and app on document and closes; escape
   await expect(page.locator('#p')).toBeHidden();
   await expect(page.locator('#p [part="box"]')).toBeHidden();
 });
+
+test('a held ctrl+k does not flicker the palette: auto-repeat keydowns are ignored', async ({ page }) => {
+  const states = await page.evaluate(() => {
+    const p = document.getElementById('p');
+    const key = (repeat) => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, repeat, bubbles: true, cancelable: true }));
+    const seen = [];
+    key(false);
+    seen.push(p.hasAttribute('open'));
+    key(true);
+    key(true);
+    key(true);
+    seen.push(p.hasAttribute('open'));
+    key(false);
+    seen.push(p.hasAttribute('open'));
+    key(true);
+    seen.push(p.hasAttribute('open'));
+    return seen;
+  });
+  expect(states).toEqual([true, true, false, false]);
+});
