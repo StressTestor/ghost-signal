@@ -36,9 +36,14 @@ test('window opens, moves children into the body, traps tab and closes on escape
   await expect(page.locator('#yes')).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(page.locator('#w [part="close"]')).toBeFocused();
-  const closed = page.evaluate(() => new Promise((r) => document.getElementById('w').addEventListener('gs-close', () => r(true), { once: true })));
+  // attach the listener and wait for it to be in place before pressing escape. an un-awaited
+  // evaluate raced the keypress on slow runners and the test timed out waiting for gs-close.
+  await page.evaluate(() => {
+    window.__gsClosed = false;
+    document.getElementById('w').addEventListener('gs-close', () => { window.__gsClosed = true; }, { once: true });
+  });
   await page.keyboard.press('Escape');
-  expect(await closed).toBe(true);
+  await page.waitForFunction(() => window.__gsClosed === true);
   await expect(page.locator('#w')).not.toHaveAttribute('open', '');
   await expect(page.locator('#w [part="frame"]')).toBeHidden();
   await expect(page.locator('#opener')).toBeFocused();

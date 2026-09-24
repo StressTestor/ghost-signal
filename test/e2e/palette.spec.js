@@ -51,12 +51,17 @@ test('rows list every registered command, filter by substring and move with arro
 });
 
 test('enter dispatches gs-command with id and app on document and closes; escape closes', async ({ page }) => {
-  const detail = page.evaluate(() => new Promise((r) => document.addEventListener('gs-command', (e) => r(e.detail), { once: true })));
+  // listener is in place before any keypress; see window.spec.js for the race this avoids
+  await page.evaluate(() => {
+    window.__gsCommand = null;
+    document.addEventListener('gs-command', (e) => { window.__gsCommand = e.detail; }, { once: true });
+  });
   await page.evaluate(() => document.getElementById('p').open());
   await expect(page.locator('#p [part="box"]')).toBeVisible();
   await page.keyboard.type('theme');
   await page.keyboard.press('Enter');
-  expect(await detail).toEqual({ id: 'shell.theme', app: 'shell' });
+  const detail = await (await page.waitForFunction(() => window.__gsCommand)).jsonValue();
+  expect(detail).toEqual({ id: 'shell.theme', app: 'shell' });
   await expect(page.locator('#p')).not.toHaveAttribute('open', '');
   await expect(page.locator('#p')).toBeHidden();
   await expect(page.locator('#p [part="box"]')).toBeHidden();
