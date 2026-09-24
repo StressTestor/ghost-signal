@@ -147,6 +147,43 @@ test('ambient glitch fires on a data-gs-ambient element at glitch 1', async ({ p
   expect(hit).toBe(true);
 });
 
+test('glitchOnce hands the text to the slice copies for the glitch and takes it back after', async ({ page }) => {
+  const errors = await open(page);
+  await expect(page.locator('#wordmark')).toHaveText('ghost signal');
+  const during = await page.evaluate(async () => {
+    // same url as the gallery's own import, so this is the module instance the page runs
+    const { glitchOnce } = await import('/src/gs.js');
+    const word = document.querySelector('.gs-wordmark');
+    const face = document.getElementById('hero-face');
+    // a toast-like chip with its own fill: the copies must not inherit it and box over the text
+    const chip = Object.assign(document.createElement('span'), { textContent: 'filled' });
+    chip.style.backgroundColor = 'rgb(1, 2, 3)';
+    document.body.append(chip);
+    const fired = [glitchOnce(word), glitchOnce(face), glitchOnce(chip)];
+    const before = getComputedStyle(word, '::before');
+    const after = getComputedStyle(word, '::after');
+    const result = {
+      fired,
+      t: word.dataset.t,
+      faceT: face.dataset.t ?? null,
+      content: [before.content, after.content],
+      background: [getComputedStyle(chip, '::before').backgroundColor, getComputedStyle(chip, '::after').backgroundColor],
+    };
+    chip.remove();
+    return result;
+  });
+  expect(during).toEqual({
+    fired: [true, true, true],
+    t: 'ghost signal',
+    faceT: null,
+    content: ['"ghost signal"', '"ghost signal"'],
+    background: ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)'],
+  });
+  await expect(page.locator('.gs-wordmark')).not.toHaveClass(/gs-glitch/, { timeout: 2000 });
+  await expect(page.locator('.gs-wordmark')).not.toHaveAttribute('data-t');
+  expect(errors).toEqual([]);
+});
+
 test('screenshots per theme and glitch level land in gallery/screenshots', async ({ page }) => {
   await open(page);
   await page.evaluate(() => window.GS.seed(1));

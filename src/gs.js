@@ -153,18 +153,31 @@ function fxAllowed() {
   return glitchLevel() !== '0' && reducedMotion() === false;
 }
 
-function fxOnce(el, cls, motion) {
+function fxOnce(el, cls, motion, { start = () => {}, end = () => {} } = {}) {
   if (fxAllowed() === false) return false;
   const ms = motionMs(motion);
   if (ms === 0) return false;
+  start();
   el.classList.remove(cls);
   void el.offsetWidth;
   el.classList.add(cls);
-  setTimeout(() => el.classList.remove(cls), ms);
+  setTimeout(() => {
+    el.classList.remove(cls);
+    end();
+  }, ms);
   return true;
 }
 
-export const glitchOnce = (el) => fxOnce(el, 'gs-glitch', 'glitch');
+// the slice's two clipped copies print attr(data-t), so the text rides in data-t for exactly the
+// glitch's length. no text (a canvas face) means no copies, just the translate shift (¬‿¬)
+export function glitchOnce(el) {
+  const text = (el.textContent ?? '').trim();
+  if (text === '') return fxOnce(el, 'gs-glitch', 'glitch');
+  return fxOnce(el, 'gs-glitch', 'glitch', {
+    start: () => el.setAttribute('data-t', text),
+    end: () => el.removeAttribute('data-t'),
+  });
+}
 export const moshOnce = (el) => fxOnce(el, 'gs-mosh', 'mosh');
 export const flareOnce = (el) => fxOnce(el, 'gs-flare', 'flare');
 

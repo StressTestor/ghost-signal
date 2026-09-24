@@ -25,26 +25,29 @@
 }
 .gs-dither-strong::before { background-image: var(--gs-dither-strong); opacity: 0.18; }
 
-/* glitch slice: two clipped copies of the text in the glitch colors, displaced in 3 steps */
+/* glitch slice: the element shifts, and two clipped copies of its text in the glitch colors
+   displace in 3 steps */
 :root[data-glitch="1"] .gs-glitch, :root[data-glitch="2"] .gs-glitch {
   position: relative;
   animation: gs-glitch-shift var(--gs-motion-glitch) var(--gs-step-glitch) 1;
 }
-:root[data-glitch="1"] .gs-glitch::before, :root[data-glitch="2"] .gs-glitch::before,
-:root[data-glitch="1"] .gs-glitch::after, :root[data-glitch="2"] .gs-glitch::after {
+/* glitchOnce puts the element's text in data-t for the glitch's length. no data-t, no copies,
+   and the copies carry no fill of their own so they never box over the text underneath */
+:root[data-glitch="1"] .gs-glitch[data-t]::before, :root[data-glitch="2"] .gs-glitch[data-t]::before,
+:root[data-glitch="1"] .gs-glitch[data-t]::after, :root[data-glitch="2"] .gs-glitch[data-t]::after {
   content: attr(data-t);
   position: absolute;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
-  background-color: inherit;
+  background: none;
 }
-:root[data-glitch="1"] .gs-glitch::before, :root[data-glitch="2"] .gs-glitch::before {
+:root[data-glitch="1"] .gs-glitch[data-t]::before, :root[data-glitch="2"] .gs-glitch[data-t]::before {
   color: var(--gs-color-glitch-a);
   clip-path: inset(0 0 55% 0);
   animation: gs-glitch-a var(--gs-motion-glitch) var(--gs-step-glitch) 1;
 }
-:root[data-glitch="1"] .gs-glitch::after, :root[data-glitch="2"] .gs-glitch::after {
+:root[data-glitch="1"] .gs-glitch[data-t]::after, :root[data-glitch="2"] .gs-glitch[data-t]::after {
   color: var(--gs-color-glitch-b);
   clip-path: inset(45% 0 0 0);
   animation: gs-glitch-b var(--gs-motion-glitch) var(--gs-step-glitch) 1;
