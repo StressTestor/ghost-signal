@@ -113,6 +113,25 @@ export function gridToSymbol(name, grid) {
 
 const hasDocument = () => typeof document !== 'undefined';
 
+// canvases paint their colors once per render, so a live data-theme flip leaves them stale.
+// one observer on <html> repaints every watched element (gs-mosaic registers on connect and
+// leaves on disconnect). created lazily, and never without a document, so node stays clean 👻
+const themed = new Set();
+let themeObserver = null;
+
+export function watchTheme(el) {
+  themed.add(el);
+  if (themeObserver !== null || hasDocument() === false || typeof MutationObserver !== 'function') return;
+  themeObserver = new MutationObserver(() => {
+    for (const item of themed) item.render();
+  });
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+}
+
+export function unwatchTheme(el) {
+  themed.delete(el);
+}
+
 export function glitchLevel() {
   return hasDocument() ? (document.documentElement.dataset.glitch ?? '1') : '1';
 }

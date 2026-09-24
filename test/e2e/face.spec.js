@@ -38,6 +38,36 @@ test('every status has a pinned hash, ok equals idle, six are distinct, the face
   expect(await page.locator('#face gs-mosaic').getAttribute('lit')).toBeNull();
 });
 
+// every exact-rgb pixel count on the face canvas. dark lit is the accent with a bloom center of
+// #b2fcba; light lit is #08701a. glitch is 0 on this page, so no blink can be what repaints it
+async function countPixels(page, rgb) {
+  return page.evaluate(([r, g, b]) => {
+    const c = document.querySelector('#face canvas');
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i] === r && d[i + 1] === g && d[i + 2] === b && d[i + 3] === 255) n++;
+    return n;
+  }, rgb);
+}
+
+test('a live data-theme flip repaints the face in the light accent', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/test/e2e/pages/face.html');
+  await page.waitForSelector('#face gs-mosaic[data-drawn]');
+  const DARK_BLOOM = [178, 252, 186];
+  const LIGHT_LIT = [8, 112, 26];
+  expect(await countPixels(page, DARK_BLOOM)).toBeGreaterThan(0);
+  expect(await countPixels(page, LIGHT_LIT)).toBe(0);
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+  await expect.poll(() => countPixels(page, LIGHT_LIT), { timeout: 2000 }).toBeGreaterThan(0);
+  expect(await countPixels(page, DARK_BLOOM)).toBe(0);
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+  await expect.poll(() => countPixels(page, DARK_BLOOM), { timeout: 2000 }).toBeGreaterThan(0);
+  expect(await countPixels(page, LIGHT_LIT)).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('a status change fires gs-face-change and one gs-glitch class at glitch 1', async ({ page }) => {
   await page.goto('/test/e2e/pages/face-motion.html');
   await page.waitForSelector('#face gs-mosaic[data-drawn]');

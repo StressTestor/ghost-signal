@@ -4,6 +4,7 @@ import {
   STATUSES, isStatus, coerceStatus, GS, parseGrid, GsGridError, GsCoreExpressionError,
   registerExpression, getExpression, registerIcon, getIcon, listIcons,
   registerSprite, getSprite, registerCommands, getCommands, motionMs, glitchOnce, startAmbient,
+  watchTheme, unwatchTheme,
 } from '../../src/gs.js';
 
 test('STATUSES is the frozen seven', () => {
@@ -79,4 +80,12 @@ test('motion helpers are inert without a document', () => {
   assert.equal(motionMs('glitch'), 0);
   assert.equal(glitchOnce({ classList: { add() {}, remove() {} } }), false);
   assert.equal(typeof startAmbient(), 'function');
+});
+
+test('theme watching is inert without a document', () => {
+  let renders = 0;
+  const el = { render() { renders += 1; } };
+  watchTheme(el);
+  unwatchTheme(el);
+  assert.equal(renders, 0);
 });

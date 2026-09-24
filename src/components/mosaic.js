@@ -1,6 +1,6 @@
 // one renderer for every dotted or ascii image. no rng in here, ever: same grid, same pixels,
 // same hash on every machine. cells are integer aligned fillRects so nothing antialiases (｡◕‿↼)
-import { parseGrid } from '../gs.js';
+import { parseGrid, watchTheme, unwatchTheme } from '../gs.js';
 
 const Base = globalThis.HTMLElement ?? class {};
 
@@ -59,7 +59,12 @@ export class GsMosaic extends Base {
       this.#canvas = document.createElement('canvas');
       this.append(this.#canvas);
     }
+    watchTheme(this);
     this.render();
+  }
+
+  disconnectedCallback() {
+    unwatchTheme(this);
   }
 
   attributeChangedCallback() {

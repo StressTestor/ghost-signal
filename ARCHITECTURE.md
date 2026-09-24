@@ -64,6 +64,10 @@ test/e2e                  playwright specs, pages/, fixtures/, __snapshots__/
   `test/e2e/__snapshots__/`. only dot mode is pixel-stable across platforms: ascii mode rasterizes
   through the platform's monospace font fallback, so its hash is never pinned. `gs-decode` and
   ambient glitch use `GS.seed` / `GS.random`.
+- a canvas reads its colors only when it renders, so `gs.js` keeps one `MutationObserver` on
+  `<html>`'s `data-theme` (created on the first `watchTheme`, never without a document) and
+  repaints every connected `gs-mosaic`; mosaics `watchTheme` on connect and `unwatchTheme` on
+  disconnect. a mosaic with an explicit `lit` attribute keeps that color across the flip.
 - components are light dom. every component module guards `HTMLElement` and
   `customElements.define` so node can import it. component rules in `base.css` key on `[part]`,
   `data-status`, `open`, `aria-expanded`, `aria-selected`. `.gs-label` and
