@@ -186,7 +186,7 @@ gs-tape {
   white-space: nowrap;
   padding: 2px 0;
   background-color: var(--gs-tape-color);
-  color: var(--gs-color-on-accent);
+  color: var(--gs-tape-text, var(--gs-color-on-accent));
   font-family: var(--gs-font-label);
   font-size: var(--gs-size-label);
   letter-spacing: var(--gs-tracking-label);

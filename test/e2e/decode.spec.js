@@ -72,6 +72,16 @@ test('tape repeats caps text an even number of times and picks the status color'
   expect(info.animated).toBe(1);
 });
 
+test('an idle tape prints in the text color, not on-accent on the faint fill', async ({ page }) => {
+  const idle = await page.evaluate(() => {
+    const t = document.getElementById('t2');
+    t.setAttribute('status', 'idle');
+    const cs = getComputedStyle(t);
+    return { color: cs.color, bg: cs.backgroundColor };
+  });
+  expect(idle).toEqual({ color: 'rgb(238, 241, 242)', bg: 'rgb(58, 62, 65)' });
+});
+
 test('tape is static at glitch 0', async ({ page }) => {
   const animated = await page.evaluate(() => {
     document.documentElement.dataset.glitch = '0';

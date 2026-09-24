@@ -4,6 +4,12 @@ import { coerceStatus } from '../gs.js';
 
 const Base = globalThis.HTMLElement ?? class {};
 
+// on-accent reads on every status fill except idle, which is the faint text token (1.9:1 there).
+// idle prints in the body text color instead, 9.5:1 in both themes
+export function tapeTextColor(status) {
+  return status === 'idle' ? 'var(--gs-color-text)' : 'var(--gs-color-on-accent)';
+}
+
 export class GsTape extends Base {
   static observedAttributes = ['text', 'status'];
 
@@ -29,6 +35,7 @@ export class GsTape extends Base {
     const text = (this.getAttribute('text') ?? '').toUpperCase();
     const status = coerceStatus(this.getAttribute('status') ?? 'bypass');
     this.style.setProperty('--gs-tape-color', `var(--gs-color-${status})`);
+    this.style.setProperty('--gs-tape-text', tapeTextColor(status));
     const unit = `${text}  //  `;
     const pairs = text.length === 0 ? 0 : Math.ceil(120 / unit.length);
     this.#track.textContent = unit.repeat(pairs * 2);
