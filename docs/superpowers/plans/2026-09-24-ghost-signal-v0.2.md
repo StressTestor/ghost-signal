@@ -6787,6 +6787,14 @@ test('glitch 0 still slides the palette in', async ({ page }) => {
 // after the exit and pass for nothing. stretch the exit so every second key lands inside it, and
 // read data-leaving after it to prove it did
 const slowExit = (page) => page.addStyleTag({ content: ':root { --gs-motion-exit: 1000ms !important; }' });
+// a fixed sleep before the first key isn't enough: on a loaded runner an enter can still sit pending
+// at currentTime 0, holding its away frame. a key then takes over from there, the exit's trip is 0,
+// it resolves at once and data-leaving is gone before the proof reads it. motion.js cancels every
+// enter the moment it lands, so an open overlay with no animation on the part has landed
+const landed = (page, host, part) => page.waitForFunction(([h, p]) => {
+  const el = document.querySelector(h);
+  return el.hasAttribute('open') && el.querySelector(`[part="${p}"]`).getAnimations().length === 0;
+}, [host, part]);
 const countCommands = (page) => page.evaluate(() => {
   window.__commands = [];
   document.addEventListener('gs-command', (e) => window.__commands.push(e.detail.id));
@@ -6801,7 +6809,7 @@ test('a key pressed while the palette leaves reaches nothing: escape then enter 
   await slowExit(page);
   await countCommands(page);
   await page.keyboard.press('Control+k');
-  await page.waitForTimeout(250);
+  await landed(page, '#p', 'box');
   await page.keyboard.press('Escape');
   expect(await focusOf(page)).toBe('BODY');
   await page.keyboard.press('a');
@@ -6818,7 +6826,7 @@ test('a double enter on the palette runs the command once', async ({ page }) => 
   await slowExit(page);
   await countCommands(page);
   await page.keyboard.press('Control+k');
-  await page.waitForTimeout(250);
+  await landed(page, '#p', 'box');
   await page.keyboard.press('Enter');
   await page.keyboard.press('Enter');
   expect(await page.locator('#p').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
@@ -6830,7 +6838,7 @@ test('a key pressed while the window leaves reaches nothing: escape then enter n
   await slowExit(page);
   await countYes(page);
   await page.evaluate(() => document.getElementById('w').open());
-  await page.waitForTimeout(250);
+  await landed(page, '#w', 'frame');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Enter');
   expect(await page.locator('#w').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
@@ -6842,7 +6850,7 @@ test('tab cannot walk back into a leaving window', async ({ page }) => {
   await slowExit(page);
   await countYes(page);
   await page.evaluate(() => document.getElementById('w').open());
-  await page.waitForTimeout(250);
+  await landed(page, '#w', 'frame');
   await page.keyboard.press('Escape');
   // the blur leaves chromium's tab starting point on #yes, so shift+tab walks to the next control
   // back, still inside the window while it's displayed. an inert window has none to offer
@@ -6856,13 +6864,17 @@ test('tab cannot walk back into a leaving window', async ({ page }) => {
 for (const [when, settle] of [['after the palette is gone', true], ['while the palette still leaves', false]]) {
   test(`a window opened from a palette command, dismissed ${when}, takes no enter`, async ({ page }) => {
     await slowExit(page);
+    // the window opens a frame or two before escape, often before its own enter has started. with
+    // no enter there's nothing for escape to take over, and the exit runs its full stretched second
+    await page.addStyleTag({ content: ':root { --gs-motion-enter: 0ms !important; }' });
     await countCommands(page);
     await countYes(page);
     await page.evaluate(() => document.addEventListener('gs-command', () => document.getElementById('w').open()));
     await page.keyboard.press('Control+k');
-    await page.waitForTimeout(250);
+    await landed(page, '#p', 'box');
     await page.keyboard.press('Enter');
     await expect(page.locator('#yes')).toBeFocused();
+    await landed(page, '#w', 'frame');
     if (settle) await expect(page.locator('#p')).toBeHidden();
     else expect(await page.locator('#p').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
     await page.keyboard.press('Escape');
