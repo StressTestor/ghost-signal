@@ -1,7 +1,7 @@
 # ghost signal v0.2: hybrid motion and the feel harness
 
 date: 2026-09-24
-status: design for joe's review. nothing here is implemented yet
+status: approved by joe 2026-09-24 with every open-question default, and the m5 panel corrected to 1470x956 css px @2x, 60hz (measured on his machine)
 base: `/Volumes/T7/ghost-signal` main `3c213b5` (v0.1.0). seance read at `/Volumes/T7/seance-look` branch `feat/ghost-signal`
 target: 0.2.0 (a breaking minor on 0.x: anything pinned `^0.1` is refused by the checker until it moves to `^0.2`)
 lineage: synthesized from three competing designs and three judge passes. the base is the consumer-first design (judge totals 19, against 18.5 for measurement-first and 17.5 for tokens-first). grafted from measurement-first: the trace-based frame and task gates, the isolated feel project, noise control, apparatus checks and tighten-only budgets. grafted from tokens-first: family enforcement (event timing stays stepped, spatial timing stays eased), frame-aligned durations, the house curve, the eventCounts positive control, the mosh rewrite. where the base bent joe's brief (a wider property list, `@starting-style` exits, dead hover transitions) this doc holds the brief literally.
@@ -446,7 +446,7 @@ a failing scenario throws `GsFeelError` whose message is the text report, so the
 
 ```
 feel: gallery / g1-dark failed 3 checks in 2 steps. runs 1 and 2 agree, run 3 skipped
-chromium 145.0.7632.6 headless shell, linux x64, 1512x982 @2x, vsync 16.7ms, calibration 38ms, steady
+chromium 145.0.7632.6 headless shell, linux x64, 1470x956 @2x, vsync 16.7ms, calibration 38ms, steady
 
 step 6 "click status bypass" (input: click [data-status-pick="bypass"])
   frame      2 frames over 16.7ms. worst 31.2ms main-thread cpu at +18ms (run 1 31.2, run 2 29.8)
@@ -473,7 +473,7 @@ feel specs run in their own playwright project, alone: `workers: 1`, `fullyParal
 
 ### 8.2 a fixed environment
 
-- profile `m5`: viewport 1512x982 css px, `deviceScaleFactor: 2`, 60hz (open question 5 confirms the panel). one object, `FEEL_PROFILES.m5`
+- profile `m5`: viewport 1470x956 css px, `deviceScaleFactor: 2`, 60hz (measured on joe's m5: 1470x956 looks-like, 2x, 60hz). one object, `FEEL_PROFILES.m5`
 - `page.emulateMedia({ reducedMotion, colorScheme })` set explicitly per matrix entry
 - no cpu throttling in ci. `cpuSlowdown` exists for local stress runs only
 - the probe asserts `document.visibilityState === 'visible'` when arming. playwright's chromium flags already disable background timer throttling
@@ -672,7 +672,7 @@ each has a default this doc already builds on. say so if one is wrong.
 2. the property budget is `transform` and `opacity`, literally. widening it to the individual transform properties (`translate`, `scale`, `rotate`, which composite the same way) would let helpers set them independently. default: literal, no widening.
 3. the answer check (every input visibly answers within 50ms) is added on top of the five budgets and is on by default, with a visible per-step opt out. default: on.
 4. the composite check (chromium must composite every animation) is added on top of the property budget and is on by default for consumers too. default: on.
-5. the `m5` profile is 1512x982 css px at 2x, 60hz. confirm the panel; a different size is a one-object change. default: as written.
+5. the `m5` profile is 1470x956 css px at 2x, 60hz. confirm the panel; a different size is a one-object change. default: as written.
 6. the rebuilt mosh (text copies with static bands, stepped transform and opacity) replaces the clip-path slicing. default: accept it after a look in the gallery at glitch 1 and 2.
 7. seance live rows landing at the top of the timeline ease the visible rows down through flip, instead of cutting or holding them behind an "n new" pill until clicked. default: flip at the top, pill only when scrolled away.
 8. if the plan task 1 baseline shows github's ubuntu runners can't hold the clean control at joe's timing numbers, the choice is between a self-hosted mac runner for the feel step and moving the timing budgets to the pre-tag `npm run feel` on the mac while structural budgets stay in ci. the second changes "enforced in ci". default: self-hosted mac runner, and nothing changes until joe picks.
