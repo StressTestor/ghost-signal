@@ -121,3 +121,109 @@ export function exit(el, { to = 'below', distance = 'enter', duration = 'exit', 
 export function enterView(el, from) {
   return slide(el, 'view', { side: from, distance: 'view', duration: 'view', easing: 'enter', fade: true, entering: true });
 }
+
+// measure, mutate, then play every target from where it was to where layout put it. one forced
+// layout after the mutation, and chrome records no layout shift for it (spec p9). callers pass
+// only targets on screen, so a 5000-row list measures the dozen that can move
+export function flip(targets, mutate, { duration = 'shift', easing = 'move', key } = {}) {
+  const list = [...targets];
+  if (motionAllowed() === false) return Promise.resolve(mutate()).then(() => true);
+  const keyOf = key ?? ((el) => el);
+  const before = new Map(list.map((el) => [keyOf(el), el.getBoundingClientRect()]));
+  for (const el of list) for (const a of el.getAnimations().filter(isMove)) a.cancel();
+  const settle = (next) => {
+    const full = parseMs(token(`--gs-motion-${duration}`));
+    const curve = token(`--gs-ease-${easing}`) || 'linear';
+    const moves = [];
+    for (const el of next) {
+      const was = before.get(keyOf(el));
+      if (was === undefined || el.isConnected === false) continue;
+      const now = el.getBoundingClientRect();
+      const dx = was.left - now.left;
+      const dy = was.top - now.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+      const a = el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0px, 0px)' }], { duration: full, easing: curve, id: 'gs-move:flip' });
+      // cancelled when it lands, like every motion.js animation: a finished one left attached makes
+      // chromium run a later transform transition on this element on the main thread (task 15)
+      moves.push(a.finished.then(() => { a.cancel(); return true; }, () => false));
+    }
+    return Promise.all(moves).then((all) => all.every(Boolean));
+  };
+  const result = mutate();
+  if (result !== null && result !== undefined && typeof result.then === 'function') return result.then((next) => settle(next ?? list));
+  return settle(result ?? list);
+}
+
+export function drawerProgress(transformY, height, opening) {
+  if (!(height > 0)) return opening ? 1 : 0;
+  const p = opening ? 1 + transformY / height : transformY / height;
+  return Math.min(1, Math.max(0, p));
+}
+
+// a drawer plus the rows after it. at open fraction p the inner shows [top, top + p * h] and the
+// followers start at top + p * h, so the two never overlap and neither needs an opaque background.
+// the caller owns the layout: clip in flow while open, out of flow (data-leaving) while closing
+export function drawer({ height = 0, duration = 'shift', easing = 'move' } = {}) {
+  let h = height;
+  let anims = [];
+  let opening = true;
+  let last = { inner: null, followers: [], from: 0 };
+  let done = Promise.resolve(true);
+
+  const yOf = (el) => translateOf(getComputedStyle(el).transform).y;
+  const progress = () => {
+    if (anims.length === 0) return opening ? 1 : 0;
+    if (last.followers.length > 0) return drawerProgress(yOf(last.followers[0]), h, opening);
+    return last.inner === null ? (opening ? 1 : 0) : drawerProgress(yOf(last.inner), h, true);
+  };
+
+  function start({ inner, followers, open, from, currentTime = 0 }) {
+    for (const a of anims) a.cancel();
+    anims = [];
+    opening = open;
+    last = { inner, followers: [...followers], from };
+    if (motionAllowed() === false || h <= 0) {
+      done = Promise.resolve(true);
+      return done;
+    }
+    const time = retargetDuration(parseMs(token(`--gs-motion-${duration}`)), open ? 1 - from : from);
+    if (time === 0) {
+      done = Promise.resolve(true);
+      return done;
+    }
+    const y = (v) => ({ transform: `translateY(${v}px)` });
+    const options = { duration: time, easing: token(`--gs-ease-${easing}`) || 'linear', id: 'gs-move:drawer', fill: open ? 'none' : 'forwards' };
+    if (inner !== null) anims.push(inner.animate(open ? [y(-(1 - from) * h), y(0)] : [y(-(1 - from) * h), y(-h)], options));
+    for (const f of followers) anims.push(f.animate(open ? [y(-(1 - from) * h), y(0)] : [y(from * h), y(0)], options));
+    for (const a of anims) a.currentTime = currentTime;
+    const mine = anims;
+    done = Promise.all(mine.map((a) => a.finished)).then(() => {
+      if (anims === mine) {
+        for (const a of mine) a.cancel();
+        anims = [];
+      }
+      return true;
+    }, () => false);
+    return done;
+  }
+
+  return {
+    play({ inner = null, followers = [], open = true, from, height: next } = {}) {
+      if (next !== undefined) h = next;
+      const p = from ?? (anims.length > 0 ? progress() : open ? 0 : 1);
+      return start({ inner, followers, open, from: p });
+    },
+    // the other way from where it is now, with the time that's left. flip the layout first
+    reverse() {
+      return start({ inner: last.inner, followers: last.followers, open: opening === false, from: progress() });
+    },
+    // a rebuild mid motion (seance's 2hz live batch) re-attaches the motion to the new nodes at the same time
+    adopt({ inner = null, followers = [] } = {}) {
+      if (anims.length === 0) return done;
+      return start({ inner, followers, open: opening, from: last.from, currentTime: anims[0].currentTime ?? 0 });
+    },
+    get progress() { return progress(); },
+    get running() { return anims.some((a) => a.playState === 'running'); },
+    get finished() { return done; },
+  };
+}

@@ -113,3 +113,26 @@ test.describe('reduced motion', () => {
     expect(r).toEqual({ results: [true, true, true], anims: 0, space: '', enter: '0ms' });
   });
 });
+
+test('flip: rows pushed down by an insert start where they were, move by transform, and shift nothing', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const t0 = performance.now();
+    const shifts = [];
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.startTime > t0) shifts.push(e.value); }).observe({ type: 'layout-shift', buffered: true });
+    const list = document.getElementById('list');
+    const rows = [...list.children];
+    const top0 = rows[0].getBoundingClientRect().top;
+    const done = window.motion.flip(rows, () => {
+      list.prepend(Object.assign(document.createElement('div'), { className: 'row', textContent: 'new' }));
+    });
+    const topNow = rows[0].getBoundingClientRect().top;
+    const ids = rows[0].getAnimations().map((a) => a.id);
+    const ok = await done;
+    return { shifts, held: Math.abs(topNow - top0), ids, ok, moved: rows[0].getBoundingClientRect().top - top0 };
+  });
+  expect(r.held).toBeLessThan(1);
+  expect(r.ids).toEqual(['gs-move:flip']);
+  expect(r.ok).toBe(true);
+  expect(r.moved).toBeCloseTo(28, 0);
+  expect(r.shifts).toEqual([]);
+});

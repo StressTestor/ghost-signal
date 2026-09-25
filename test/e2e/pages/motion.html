@@ -7,7 +7,10 @@
   <link rel="stylesheet" href="../../../src/base.css">
   <link rel="stylesheet" href="../../../src/fx.css">
   <link rel="stylesheet" href="../../../src/motion.css">
-  <style>#box { width: 120px; height: 40px; margin: 40px; background-color: var(--gs-color-raised); }</style>
+  <style>
+    #box { width: 120px; height: 40px; margin: 40px; background-color: var(--gs-color-raised); }
+    .row { height: 28px; line-height: 28px; border-bottom: var(--gs-border); }
+  </style>
   <script type="module">
     import * as motion from '../../../src/motion.js';
     window.motion = motion;
@@ -16,5 +19,6 @@
 </head>
 <body>
   <div id="box"></div>
+  <div id="list"><div class="row">a</div><div class="row">b</div><div class="row">c</div><div class="row">d</div></div>
 </body>
 </html>
