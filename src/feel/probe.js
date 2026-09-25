@@ -382,15 +382,21 @@ export function installProbe() {
           row.style.cssText = 'height:40px';
           // the stamp and the moves are how selfTest tells this row's shift from the page's own. a step
           // index can't: a page that never goes quiet holds step 0 open past the landing. how far the
-          // row pushes things depends on the page (margins collapse, a centered body moves half), so
-          // it's read here, before and after, in one task the page's own frames can't get into XX
+          // row pushes things depends on the page (margins collapse, a centered body moves half, a
+          // body laid out in a row moves its siblings sideways), so both axes are read here, before
+          // and after, in one task the page's own frames can't get into XX
           const kids = [...document.body.children].filter((el) => el.hasAttribute('data-gs-feel-planted') === false);
-          const before = kids.map((el) => el.getBoundingClientRect().top);
+          const before = kids.map((el) => el.getBoundingClientRect());
           state.plantedAt = now();
           document.body.prepend(row);
-          const moves = new Set(kids.map((el, i) => Math.round((el.getBoundingClientRect().top - before[i]) * 10) / 10));
-          moves.delete(0);
-          state.plantedMoves = [...moves];
+          const r1 = (n) => Math.round(n * 10) / 10;
+          const moves = new Map();
+          kids.forEach((el, i) => {
+            const r = el.getBoundingClientRect();
+            const m = { dx: r1(r.left - before[i].left), dy: r1(r.top - before[i].top) };
+            if (m.dx !== 0 || m.dy !== 0) moves.set(`${m.dx},${m.dy}`, m);
+          });
+          state.plantedMoves = [...moves.values()];
         }, 600);
       });
       document.body.append(b);

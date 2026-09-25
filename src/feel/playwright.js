@@ -50,12 +50,12 @@ function sinceArm(samples) {
 }
 
 // the planted row's shift reports on the first frame after the prepend. the bound is loose on
-// purpose for a slow runner; the moves match is what keeps a page's own shift out of it
+// purpose for a slow runner; the moves match, on both axes, is what keeps a page's own shift out of it
 const PLANT_LANDS_MS = 500;
 export function plantedShift(v, samples) {
   if (v.check !== 'shift' || typeof samples.plantedAt !== 'number' || typeof v.data?.at !== 'number') return false;
   if (v.data.at < samples.plantedAt || v.data.at >= samples.plantedAt + PLANT_LANDS_MS) return false;
-  return v.data.sources.some((s) => s.dy !== 0 && samples.plantedMoves.some((m) => Math.abs(s.dy - m) <= 1));
+  return v.data.sources.some((s) => (s.dx !== 0 || s.dy !== 0) && samples.plantedMoves.some((m) => Math.abs(s.dx - m.dx) <= 1 && Math.abs(s.dy - m.dy) <= 1));
 }
 
 const requireWhy = (why, what) => {

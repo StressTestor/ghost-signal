@@ -74,6 +74,28 @@ test('feel.selfTest() sees the planted shift on a page that already shifted', as
   expect(result.seen).toEqual(expect.arrayContaining(['input', 'shift', 'task']));
 });
 
+// an app shell lays the body out in a row, so the planted row lands as a column and pushes its
+// siblings sideways with no vertical move at all. selfTest has to see that shift too
+test('feel.selfTest() sees the planted shift on a page laid out in a row', async ({ page, feel }) => {
+  test.setTimeout(60_000);
+  await page.goto(url('clean'));
+  await page.evaluate(() => window.__gsFeel.ready());
+  await page.evaluate(() => {
+    for (const el of [...document.body.children]) if (el.localName !== 'script') el.remove();
+    document.body.style.cssText = 'display:flex;flex-direction:row;align-items:flex-start;gap:8px;margin:0';
+    const aside = document.createElement('aside');
+    aside.style.cssText = 'width:200px;height:400px';
+    aside.textContent = 'sidebar';
+    const main = document.createElement('main');
+    main.style.cssText = 'width:600px;height:400px';
+    main.textContent = 'main';
+    document.body.append(aside, main);
+  });
+  await page.waitForTimeout(300);
+  const result = await feel.selfTest();
+  expect(result.seen).toEqual(expect.arrayContaining(['input', 'shift', 'task']));
+});
+
 test('feel.selfTest() never credits an earlier shift for the planted one', async ({ page, feel }) => {
   test.setTimeout(60_000);
   await page.goto(url('untrusted'));
