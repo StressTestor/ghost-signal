@@ -690,6 +690,7 @@ what the first seance feel run will likely report, read from the code:
 7. the answer check's blind spot. it proves something changed, and a mutation inside a `display: none` subtree still counts. treat it as a floor.
 8. visual change without a failing test. mosh looks different and hover no longer eases. the gallery screenshots are uploaded as artifacts and asserted by nothing, so joe has to look at glitch 1 and 2 before the tag.
 9. ci time grows by about 4 minutes for the gallery matrix and the controls, inside a 10-minute step cap.
+10. the frame check can't see a window's lead. 7.7 counts cpu between consecutive `BeginMainThreadFrame` events inside a window, and the last interval closes on the end mark, but nothing opens on the start mark: a task that starts between the start mark and the window's first `BeginMainThreadFrame` lands in no frame. a task on the main thread holds that next frame back until it ends, so a 20 to 49ms burn there misses the 16.7ms frame check and stays under the 50ms task check. on the recorded fixtures the composite window loses 5.59 of its 16.8ms of task cpu this way, and every window of a recorded gallery run has some lead cpu, up to 6.8ms. `locator.click`'s stability wait usually puts a frame ahead of the input, so steps driven by `page.keyboard` or `page.evaluate` are the exposed ones. the fix opens the first interval on the start mark, the way the last one closes on the end mark. it changes the frame row's wording in 7.7, so it waits for joe (found in the plan task 2 review).
 
 ## 14. open questions for joe
 
