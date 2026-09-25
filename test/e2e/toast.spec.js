@@ -139,6 +139,27 @@ test('toasts added while the anchor is hidden or detached restack once it render
   expectNoOverlap(detached);
 });
 
+// disconnect drops every observation. reattached with no new toast(), nothing else re-observes the
+// old slots, so a rewrap after the reattach only restacks if connectedCallback observed them again
+test('slots that survive a detach and reattach still restack when a resize rewraps them', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await page.evaluate(async () => {
+    const toasts = document.getElementById('toasts');
+    for (let i = 0; i < 3; i++) toasts.toast({ status: 'deny', text: `permission denied for the write to the config file number ${i} in the vault` });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    toasts.remove();
+    document.body.append(toasts);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  });
+  const wide = await slotRects(page);
+  await page.setViewportSize({ width: 300, height: 800 });
+  const narrow = await slotRects(page);
+  expect(narrow).toHaveLength(3);
+  // no rewrap, no test: the overlap check needs heights that changed after the reattach
+  narrow.forEach((b, i) => expect(b.height).toBeGreaterThan(wide[i].height));
+  expectNoOverlap(narrow);
+});
+
 test('the anchor has no height and every slot is pinned to its bottom right', async ({ page }) => {
   const r = await page.evaluate(() => {
     const toasts = document.getElementById('toasts');
