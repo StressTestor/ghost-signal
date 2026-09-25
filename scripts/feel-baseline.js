@@ -15,6 +15,14 @@ const arg = (name, fallback) => {
 const RUNS = Number(arg('runs', '20'));
 const DPR = Number(arg('dpr', '2'));
 const PORT = Number(arg('port', '4174'));
+// zero runs summarize to the greenest line possible (no frames, no drops, nothing over budget),
+// and step 11 would read that as a pass. an empty measurement is a crash, never a result XX
+for (const [name, v] of [['runs', RUNS], ['dpr', DPR], ['port', PORT]]) {
+  if (!Number.isInteger(v) || v <= 0) {
+    process.stderr.write(`feel-baseline: --${name} must be a positive integer, got ${JSON.stringify(arg(name, ''))}\n`);
+    process.exit(1);
+  }
+}
 const VIEWPORT = { width: 1470, height: 956 };
 const CATEGORIES = [
   'disabled-by-default-devtools.timeline',
@@ -117,10 +125,24 @@ async function oneRun(browser, index) {
   await page.goto(`http://127.0.0.1:${PORT}/test/feel/pages/clean.html`);
   await page.evaluate(() => document.fonts.ready);
   const steady = await page.evaluate(steadyFrames, 30);
+  // off has to be as warm as on, or off minus on measures warm-up and calls it tracing overhead.
+  // the first call pays for the jit, and on the m5 the idle rAF stretch above drops the core's
+  // clock: the next calls read about 27, 25, 19, 17, 16, 15ms. spin until two calls agree within
+  // 5% (12 at most) before either number counts (¬‿¬)
+  let prev = (await page.evaluate(calibrate)).ms;
+  for (let i = 0; i < 12; i++) {
+    const ms = (await page.evaluate(calibrate)).ms;
+    if (Math.abs(ms - prev) <= 0.05 * prev) break;
+    prev = ms;
+  }
   const calOff = await page.evaluate(calibrate);
+  // the feel probe asks for a frame every vsync. without the same loop this page only begins a
+  // main-thread frame when something invalidates it, and each cpu bucket spans two vsyncs plus idle
+  await page.evaluate(() => requestAnimationFrame(function tick() { requestAnimationFrame(tick); }));
   const { events, out } = await traced(page, async () => {
-    await page.evaluate(() => performance.mark('baseline:start'));
+    // calibrate is one 15 to 30ms task. it runs before baseline:start so no frame's cpu can own it
     const calOn = await page.evaluate(calibrate);
+    await page.evaluate(() => performance.mark('baseline:start'));
     await page.locator('#toggle').click();
     await page.evaluate(() => window.cleanInsert());
     await page.evaluate(() => window.cleanToasts(5));
@@ -132,6 +154,11 @@ async function oneRun(browser, index) {
   });
   await context.close();
   const a = analyze(events, 'baseline:start', 'baseline:end');
+  // these checks live here, outside analyze(), because task 2 swaps analyze() for trace.js whole.
+  // a window with no frames or a trace with no reporter reads as 0 over budget and 0 drops, the
+  // greenest possible lie. a chromium bump that renames a category would produce exactly that >:[
+  if (a.cpu.length === 0) throw new Error(`run ${index}: no BeginMainThreadFrame between baseline:start and baseline:end. the trace format moved`);
+  if (!events.some((e) => e.name === 'PipelineReporter')) throw new Error(`run ${index}: trace has no PipelineReporter events, so 0 drops would mean no reporter, not no drops`);
   return { index, steady, calOff: calOff.ms, calOn: out.calOn.ms, ...a };
 }
 
@@ -146,7 +173,10 @@ async function compositeBits(browser) {
     await page.evaluate(() => performance.mark('bits:end'));
   });
   await context.close();
-  return analyze(events, 'bits:start', 'bits:end').composite;
+  const bits = analyze(events, 'bits:start', 'bits:end').composite;
+  // task 7 asserts whatever lands here, so one animation must give exactly one failure reason
+  if (bits.length !== 1) throw new Error(`the inline span probe gave ${bits.length} composite failures (${JSON.stringify(bits)}), expected exactly 1`);
+  return bits;
 }
 
 const server = await serve();
