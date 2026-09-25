@@ -60,8 +60,11 @@ function judgeStep(budgets, run, s, out) {
   const interval = run.steady?.interval ?? 1000 / 60;
   const ref = refOf(s);
   const w = windowFor(samples, trace, s);
-  const frames = frameCosts(trace, w.start, w.end);
-  if (frames.length === 0) throw new GsFeelUnevaluable(`the trace has no BeginMainThreadFrame inside step ${s.index} "${s.name}"`);
+  if (trace.frames.some((ts) => ts >= w.start && ts <= w.end) === false) throw new GsFeelUnevaluable(`the trace has no BeginMainThreadFrame inside step ${s.index} "${s.name}"`);
+  // the first interval opens on the start mark, the way the last closes on the end mark (spec 7.7).
+  // an input handler that runs before the window's first BeginMainThreadFrame holds that frame back,
+  // and without the lead it counted toward no frame at all. no free frames for the fast ones >:[
+  const frames = frameCosts({ ...trace, frames: [w.start, ...trace.frames.filter((ts) => ts > w.start)] }, w.start, w.end);
   const overFrames = frames.filter((f) => f.cpu > budgets.frame);
   const tasks = trace.tasks.filter((t) => t.ts >= w.start && t.ts <= w.end);
   const overTasks = tasks.filter((t) => t.tdur / 1000 > budgets.task).sort((a, b) => b.tdur - a.tdur);

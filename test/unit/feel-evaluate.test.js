@@ -7,7 +7,8 @@ import { evaluateRun, needsThirdRun, combineRuns, DROPS_GATE } from '../../src/f
 const B = loadBudgets();
 
 // a run where step i spans [1000(i + 1), 1000(i + 1) + 500] ms and the trace clock is
-// performance.now() in microseconds, so offsetMs is 0
+// performance.now() in microseconds, so offsetMs is 0. a step's BeginMainThreadFrames start on its
+// start mark unless it sets lead, the ms between the mark and its first one
 // a run whose probe saw animations gets one clean composite record by default, the way a real trace
 // always carries an Animation event per animation. the composite apparatus test passes [] on purpose
 const cleanComposite = { id: '0x1', nodeName: 'div', displayName: '', compositeFailed: 0, unsupportedProperties: [], ts: 1_100_000 };
@@ -34,7 +35,7 @@ function build({ index = 1, steps = [{}], shifts = [], animations = [], overlaps
   sampleSteps.forEach((s, i) => {
     marks.push({ name: `gs-feel:${index}:${i}:start`, ts: s.start * 1000, startTime: s.start });
     marks.push({ name: `gs-feel:${index}:${i}:end`, ts: s.end * 1000, startTime: s.end });
-    for (let k = 0; k < 30; k++) frames.push(Math.round((s.start + k * 16.7) * 1000));
+    for (let k = 0; k < 30; k++) frames.push(Math.round((s.start + (steps[i].lead ?? 0) + k * 16.7) * 1000));
     for (const t of steps[i].tasks ?? []) tasks.push({ ts: (s.start + t.at) * 1000, dur: t.dur * 1000, tdur: (t.tdur ?? t.dur) * 1000 });
   });
   tasks.sort((a, b) => a.ts - b.ts);
@@ -90,6 +91,18 @@ test('the fast path: runs that agree need no third run, runs that disagree do', 
   assert.equal(needsThirdRun(B, [e(build()), e(build({ index: 2 }))]), false);
   assert.equal(needsThirdRun(B, [e(build(heavy)), e(build({ index: 2, ...heavy }))]), false);
   assert.equal(needsThirdRun(B, [e(build(heavy)), e(build({ index: 2 }))]), true);
+});
+
+test('the frame check sees the lead: cpu between the start mark and the first frame is a frame', () => {
+  // page.keyboard.press has no actionability wait, so the handler runs before the first
+  // BeginMainThreadFrame of the window. it holds that frame back all the same
+  const report = fold([build({ steps: [{ lead: 8, tasks: [{ at: 2, dur: 30 }] }] })], { runsPlanned: 1 });
+  assert.deepEqual(checks(report), ['frame']);
+  assert.equal(report.violations[0].data.worst, 30);
+  assert.equal(report.violations[0].data.at, 0);
+  assert.deepEqual(report.stalls, []);
+  // the lead interval is ours, not the trace's: a window with no BeginMainThreadFrame still throws
+  assert.throws(() => evaluateRun(B, build({ steps: [{ lead: 600 }] }), { mode: 'motion' }), (e) => e instanceof GsFeelUnevaluable && /no BeginMainThreadFrame/.test(e.message));
 });
 
 test('strict mode: one run, any timing violation fails', () => {
