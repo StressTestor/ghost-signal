@@ -24,7 +24,7 @@ file is committed so a consumer can vendor the repo at a tag with no build step 
 | generator and cli | node 22+, no dependencies | `scripts/gen.js`, `scripts/ghost-signal.js`, logic in `scripts/lib/` |
 | fonts | doto (ofl) bundled as woff2 | offline, tauri csp, nothing fetched |
 | tests | `node:test` + `@playwright/test` (chromium) against `scripts/serve.js`; the `feel` project runs alone | contrast, determinism, reduced motion, plug-in probe, feel budgets |
-| ci | github actions, every action pinned to a commit sha | gen diff, unit, contrast, e2e, screenshot artifact |
+| ci | github actions, every action pinned to a commit sha | gen diff, unit, contrast, e2e, feel, runner baseline, report artifacts |
 
 ## tree
 
@@ -52,7 +52,7 @@ gen/                      GhostSignal.swift ghost_signal.rs tokens.md
 gallery/                  index.html gallery.js apps/probe/ screenshots/ (gitignored)
 test/unit                 node:test
 test/e2e                  playwright specs, pages/, fixtures/, __snapshots__/
-test/feel                 playwright feel project: harness.spec.js, pages/
+test/feel                 playwright feel project: harness.spec.js (controls), pages/
 ```
 
 ## key patterns
@@ -120,7 +120,7 @@ commit sha with the version in a trailing comment:
 | `actions/upload-artifact` | `b7c566a772e6b6bfb58ed0dc250532a479d7789f` | v6.0.0 |
 
 steps: `npm ci` -> `npm run gen && git diff --exit-code` (generated files must already be current)
--> `npm test` -> `npm run check` -> `npx playwright install --with-deps --only-shell chromium` -> `npm run e2e` -> `node scripts/feel-baseline.js` (informational, continue-on-error) -> upload `feel-baseline` (job capped at 40 minutes)
+-> `npm test` -> `npm run check` -> `npx playwright install --with-deps --only-shell chromium` -> `npm run e2e` -> `npm run feel` (10 minute cap) -> upload `test-results/**/feel-*` as `feel-reports` -> `node scripts/feel-baseline.js --runs=5` (informational, continue-on-error) -> upload `feel-baseline` (job capped at 40 minutes)
 -> upload `gallery/screenshots` as an artifact (`if: always()`, ignored if absent). releasing is a
 git tag (`v0.1.0`) pushed to `origin`; consumers pin to it via `github:StressTestor/ghost-signal#v0.1.0`
 or `scripts/sync-ghost-signal.sh`.
@@ -198,4 +198,4 @@ node scripts/feel-baseline.js --runs=20 --dpr=2
 node scripts/record-feel-fixtures.js
 ```
 
-last updated: 2026-09-25 (v0.2 in progress, plan task 6)
+last updated: 2026-09-25 (v0.2 in progress, plan task 7)

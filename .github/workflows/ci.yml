@@ -36,10 +36,18 @@ jobs:
         timeout-minutes: 8
       - run: npm run e2e
         timeout-minutes: 10
-      # informational: what a github runner can hold on the clean control (spec 8.6). gates nothing,
-      # so a baseline crash never turns ci red
-      - run: node scripts/feel-baseline.js --runs=20 --dpr=2 && node scripts/feel-baseline.js --runs=20 --dpr=1
-        timeout-minutes: 8
+      - run: npm run feel
+        timeout-minutes: 10
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: feel-reports
+          path: test-results/**/feel-*
+          if-no-files-found: ignore
+      # informational: the runner's numbers on the clean control, next to every feel run (spec 8.3).
+      # it gates nothing, so a crash here never turns ci red
+      - run: node scripts/feel-baseline.js --runs=5 --dpr=2
+        timeout-minutes: 3
         continue-on-error: true
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
