@@ -23,7 +23,7 @@ file is committed so a consumer can vendor the repo at a tag with no build step 
 | web | plain es modules and css, light dom components, no bundler, no runtime deps | consumers import files as-is; global css styles `[part="x"]` attributes |
 | generator and cli | node 22+, no dependencies | `scripts/gen.js`, `scripts/ghost-signal.js`, logic in `scripts/lib/` |
 | fonts | doto (ofl) bundled as woff2 | offline, tauri csp, nothing fetched |
-| tests | `node:test` + `@playwright/test` (chromium) against `scripts/serve.js` | contrast, determinism, reduced motion, plug-in probe |
+| tests | `node:test` + `@playwright/test` (chromium) against `scripts/serve.js`; the `feel` project runs alone | contrast, determinism, reduced motion, plug-in probe, feel budgets |
 | ci | github actions, every action pinned to a commit sha | gen diff, unit, contrast, e2e, screenshot artifact |
 
 ## tree
@@ -47,12 +47,12 @@ src/
   fonts/                  Doto-VariableFont.woff2 (~8.7kb) OFL.txt SOURCE
   gs.js grid.js expressions.js copy.js
   components/             mosaic face decode tape window toast row container empty error splash wallpaper palette (13 modules)
-  feel/                   the feel harness, pure node modules first (task 6 adds the probe and the fixture)
+  feel/                   probe.js (in-page recorder) playwright.js (the fixture) trace.js budgets.js evaluate.js format.js errors.js index.js
 gen/                      GhostSignal.swift ghost_signal.rs tokens.md
 gallery/                  index.html gallery.js apps/probe/ screenshots/ (gitignored)
 test/unit                 node:test
 test/e2e                  playwright specs, pages/, fixtures/, __snapshots__/
-test/feel/pages           feel controls (clean.html so far)
+test/feel                 playwright feel project: harness.spec.js, pages/
 ```
 
 ## key patterns
@@ -188,7 +188,9 @@ npm ci
 npm run gen && git diff --exit-code
 npm test
 npm run check
-npm run e2e
+npm run e2e   # the chromium project only
+npm run feel
+GS_FEEL_RUNS=1 npm run feel
 npm run serve
 node scripts/ghost-signal.js check gallery/apps/probe/app.json
 DEST=vendor/ghost-signal scripts/sync-ghost-signal.sh v0.1.0
@@ -196,4 +198,4 @@ node scripts/feel-baseline.js --runs=20 --dpr=2
 node scripts/record-feel-fixtures.js
 ```
 
-last updated: 2026-09-25 (v0.2 in progress, plan task 2)
+last updated: 2026-09-25 (v0.2 in progress, plan task 6)

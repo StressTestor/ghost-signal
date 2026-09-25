@@ -18,7 +18,8 @@
     "test": "node --test 'test/unit/**/*.test.js'",
     "gen": "node scripts/gen.js",
     "check": "node scripts/check-contrast.js",
-    "e2e": "playwright test",
+    "e2e": "playwright test --project=chromium",
+    "feel": "playwright test --project=feel --workers=1",
     "serve": "node scripts/serve.js"
   },
   "engines": {
