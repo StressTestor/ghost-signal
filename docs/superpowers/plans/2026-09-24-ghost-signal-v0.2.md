@@ -6353,7 +6353,7 @@ spec 6.2 (`indicator`, including its ResizeObserver), 9.3 (`motion.spec.js`: the
 
 **Interfaces:**
 - Consumes: nothing beyond task 15.
-- Produces: `indicator(container, { selector = '[aria-current="page"], [aria-current="true"], [aria-selected="true"]', axis = 'x' })` prepends `<span part="indicator" aria-hidden="true" data-axis="x|y">` to a `position: relative` container, places it on the first match through `translateX(left) scaleX(width / 100)` (axis x) or `translateY(top) scaleY(height / 100)` (axis y), follows `aria-current` / `aria-selected` / child changes (MutationObserver) and size changes of the container and each of its element children at border-box (ResizeObserver, rebuilt when the container's own children change, so a tab that grows inside a full-width nav still moves the bar), hides itself (`hidden`) when nothing matches, and places without a transition whenever it wasn't placed before (first mount, or after the container had no size). returns `{ update(), disconnect() }`. the slide itself is the css transition in `motion.css`, so a held arrow key retargets it natively.
+- Produces: `indicator(container, { selector = '[aria-current="page"], [aria-current="true"], [aria-selected="true"]', axis = 'x' })` prepends `<span part="indicator" aria-hidden="true" data-axis="x|y">` to a `position: relative` container, places it on the first match through `translateX(left) scaleX(width / 100)` (axis x) or `translateY(top) scaleY(height / 100)` (axis y), follows `aria-current` / `aria-selected` / child changes (MutationObserver) and size changes of the container and each of its element children at border-box (ResizeObserver, rebuilt when the container's own children change, so a tab that grows inside a full-width nav still moves the bar), hides itself (`hidden`) when nothing matches or the match has no size on the travel axis, and places without a transition whenever it wasn't placed before, including when the item had no size (first mount, or after the container or the item had no size). returns `{ update(), disconnect() }`. the slide itself is the css transition in `motion.css`, so a held arrow key retargets it natively.
 
 - [ ] **Step 1: write the failing tests**
 
@@ -6493,6 +6493,39 @@ test('the indicator follows a tab that changes size while the container keeps it
   expect(r.late.transform).not.toBe(r.inserted);
   expect(r.late.transform).toBe(r.late.want);
 });
+
+test('the indicator lands without sliding in when the current tab had no size at mount', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const tabs = document.getElementById('tabs');
+    const [a] = tabs.querySelectorAll('button');
+    // a display: none tab, or a custom element that gains its size after indicator() runs
+    a.style.display = 'none';
+    window.motion.indicator(tabs);
+    const bar = tabs.querySelector('[part="indicator"]');
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    const mounted = { hidden: bar.hidden, transform: bar.style.transform };
+    a.style.display = '';
+    const want = () => `translateX(${a.offsetLeft}px) scaleX(${a.offsetWidth / 100})`;
+    // polls on the transform, since a slide in reaches it too. the animations tell them apart
+    await new Promise((resolve) => {
+      const t0 = performance.now();
+      const f = () => {
+        if (bar.style.transform === want() || performance.now() - t0 > 500) resolve();
+        else requestAnimationFrame(f);
+      };
+      requestAnimationFrame(f);
+    });
+    return {
+      mounted,
+      shown: { hidden: bar.hidden, transform: bar.style.transform, want: want() },
+      anims: bar.getAnimations().map((x) => ({ kind: x.constructor.name, property: x.transitionProperty })),
+    };
+  });
+  expect(r.mounted).toEqual({ hidden: true, transform: '' });
+  expect(r.shown.hidden).toBe(false);
+  expect(r.shown.transform).toBe(r.shown.want);
+  expect(r.anims).toEqual([]);
+});
 ```
 
 Run: `npx playwright test --project=chromium test/e2e/motion.spec.js -g indicator`
@@ -6504,7 +6537,8 @@ Expected: FAIL, `window.motion.indicator is not a function`.
 // one sliding bar under the current item. it travels and stretches along one axis from a 100px
 // base inside one transform; the cross axis comes from css, so a 3px bar stays 3px. the slide is
 // the css transition in motion.css, which retargets natively when a held key moves it 30 times a
-// second. first placement uses data-gs-still, so it never slides in from 0
+// second. first placement uses data-gs-still, so it never slides in from 0, and neither does the
+// first placement after the container or the current item had no size
 export function indicator(container, { selector = '[aria-current="page"], [aria-current="true"], [aria-selected="true"]', axis = 'x' } = {}) {
   const bar = document.createElement('span');
   bar.setAttribute('part', 'indicator');
@@ -6514,14 +6548,17 @@ export function indicator(container, { selector = '[aria-current="page"], [aria-
   let placed = false;
   const place = () => {
     const item = container.querySelector(selector);
-    bar.hidden = item === null;
-    if (item === null || container.offsetWidth === 0) {
+    // an item with no size on the travel axis (display: none, a custom element not upgraded yet)
+    // counts as no item. placing it would park a bar with no length at 0 and slide it in later
+    const size = item === null ? 0 : axis === 'y' ? item.offsetHeight : item.offsetWidth;
+    bar.hidden = size === 0;
+    if (size === 0 || container.offsetWidth === 0) {
       placed = false;
       return;
     }
     const t = axis === 'y'
-      ? `translateY(${item.offsetTop}px) scaleY(${item.offsetHeight / 100})`
-      : `translateX(${item.offsetLeft}px) scaleX(${item.offsetWidth / 100})`;
+      ? `translateY(${item.offsetTop}px) scaleY(${size / 100})`
+      : `translateX(${item.offsetLeft}px) scaleX(${size / 100})`;
     if (placed === false) {
       bar.setAttribute('data-gs-still', '');
       bar.style.transform = t;

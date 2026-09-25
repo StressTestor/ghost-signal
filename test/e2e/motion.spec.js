@@ -508,3 +508,36 @@ test('the indicator follows a tab that changes size while the container keeps it
   expect(r.late.transform).not.toBe(r.inserted);
   expect(r.late.transform).toBe(r.late.want);
 });
+
+test('the indicator lands without sliding in when the current tab had no size at mount', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const tabs = document.getElementById('tabs');
+    const [a] = tabs.querySelectorAll('button');
+    // a display: none tab, or a custom element that gains its size after indicator() runs
+    a.style.display = 'none';
+    window.motion.indicator(tabs);
+    const bar = tabs.querySelector('[part="indicator"]');
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    const mounted = { hidden: bar.hidden, transform: bar.style.transform };
+    a.style.display = '';
+    const want = () => `translateX(${a.offsetLeft}px) scaleX(${a.offsetWidth / 100})`;
+    // polls on the transform, since a slide in reaches it too. the animations tell them apart
+    await new Promise((resolve) => {
+      const t0 = performance.now();
+      const f = () => {
+        if (bar.style.transform === want() || performance.now() - t0 > 500) resolve();
+        else requestAnimationFrame(f);
+      };
+      requestAnimationFrame(f);
+    });
+    return {
+      mounted,
+      shown: { hidden: bar.hidden, transform: bar.style.transform, want: want() },
+      anims: bar.getAnimations().map((x) => ({ kind: x.constructor.name, property: x.transitionProperty })),
+    };
+  });
+  expect(r.mounted).toEqual({ hidden: true, transform: '' });
+  expect(r.shown.hidden).toBe(false);
+  expect(r.shown.transform).toBe(r.shown.want);
+  expect(r.anims).toEqual([]);
+});

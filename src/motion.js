@@ -293,7 +293,8 @@ export function drawer({ height = 0, duration = 'shift', easing = 'move' } = {})
 // one sliding bar under the current item. it travels and stretches along one axis from a 100px
 // base inside one transform; the cross axis comes from css, so a 3px bar stays 3px. the slide is
 // the css transition in motion.css, which retargets natively when a held key moves it 30 times a
-// second. first placement uses data-gs-still, so it never slides in from 0
+// second. first placement uses data-gs-still, so it never slides in from 0, and neither does the
+// first placement after the container or the current item had no size
 export function indicator(container, { selector = '[aria-current="page"], [aria-current="true"], [aria-selected="true"]', axis = 'x' } = {}) {
   const bar = document.createElement('span');
   bar.setAttribute('part', 'indicator');
@@ -303,14 +304,17 @@ export function indicator(container, { selector = '[aria-current="page"], [aria-
   let placed = false;
   const place = () => {
     const item = container.querySelector(selector);
-    bar.hidden = item === null;
-    if (item === null || container.offsetWidth === 0) {
+    // an item with no size on the travel axis (display: none, a custom element not upgraded yet)
+    // counts as no item. placing it would park a bar with no length at 0 and slide it in later
+    const size = item === null ? 0 : axis === 'y' ? item.offsetHeight : item.offsetWidth;
+    bar.hidden = size === 0;
+    if (size === 0 || container.offsetWidth === 0) {
       placed = false;
       return;
     }
     const t = axis === 'y'
-      ? `translateY(${item.offsetTop}px) scaleY(${item.offsetHeight / 100})`
-      : `translateX(${item.offsetLeft}px) scaleX(${item.offsetWidth / 100})`;
+      ? `translateY(${item.offsetTop}px) scaleY(${size / 100})`
+      : `translateX(${item.offsetLeft}px) scaleX(${size / 100})`;
     if (placed === false) {
       bar.setAttribute('data-gs-still', '');
       bar.style.transform = t;
