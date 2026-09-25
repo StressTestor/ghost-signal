@@ -1,6 +1,7 @@
 // command palette. meta+k or ctrl+k toggles it, substring filter over every registered manifest,
 // arrows move, enter dispatches gs-command on document and closes, escape closes
 import { getCommands } from '../gs.js';
+import { enter, exit, indicator } from '../motion.js';
 
 const Base = globalThis.HTMLElement ?? class {};
 
@@ -13,6 +14,8 @@ export function filterCommands(list, query) {
 export class GsPalette extends Base {
   #built = false;
   #input = null;
+  #box = null;
+  #overlay = null;
   #list = null;
   #items = [];
   #index = 0;
@@ -41,11 +44,13 @@ export class GsPalette extends Base {
     const overlay = document.createElement('div');
     overlay.setAttribute('part', 'overlay');
     overlay.addEventListener('click', () => this.close());
+    this.#overlay = overlay;
 
     const box = document.createElement('div');
     box.setAttribute('part', 'box');
     box.setAttribute('role', 'dialog');
     box.setAttribute('aria-label', 'commands');
+    this.#box = box;
 
     this.#input = document.createElement('input');
     this.#input.setAttribute('part', 'input');
@@ -67,23 +72,35 @@ export class GsPalette extends Base {
 
     box.append(this.#input, this.#list);
     this.append(overlay, box);
+    // the highlight slides between rows; the row's text color stays a cut
+    indicator(this.#list, { axis: 'y', selector: '[aria-selected="true"]' });
     this.#built = true;
   }
 
   open() {
+    this.removeAttribute('data-leaving');
     this.setAttribute('open', '');
     this.#input.value = '';
     this.refresh();
+    // focus first: typing never waits on motion
     this.#input.focus();
+    enter(this.#box, { from: 'above' });
+    enter(this.#overlay, { distance: 0 });
   }
 
   close() {
+    if (this.hasAttribute('open') === false) return;
     this.removeAttribute('open');
+    // displayed through the exit, then gone. a reopen takes the exit over and keeps it open
+    this.setAttribute('data-leaving', '');
+    Promise.all([exit(this.#box, { to: 'above' }), exit(this.#overlay, { distance: 0 })]).then(([done]) => {
+      if (done && this.hasAttribute('open') === false) this.removeAttribute('data-leaving');
+    });
   }
 
   refresh() {
     this.#items = filterCommands(getCommands(), this.#input.value);
-    this.#list.textContent = '';
+    for (const li of this.#list.querySelectorAll(':scope > [part="row"]')) li.remove();
     this.#items.forEach((c, i) => {
       const li = document.createElement('li');
       li.setAttribute('part', 'row');
@@ -110,7 +127,7 @@ export class GsPalette extends Base {
   }
 
   #paint() {
-    [...this.#list.children].forEach((li, i) => li.setAttribute('aria-selected', String(i === this.#index)));
+    this.#list.querySelectorAll(':scope > [part="row"]').forEach((li, i) => li.setAttribute('aria-selected', String(i === this.#index)));
   }
 
   run(index = this.#index) {

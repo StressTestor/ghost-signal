@@ -112,6 +112,21 @@ test.describe('reduced motion', () => {
     });
     expect(r).toEqual({ results: [true, true, true], anims: 0, space: '', enter: '0ms' });
   });
+
+  test('the palette and the window open and close as cuts', async ({ page }) => {
+    const r = await page.evaluate(async () => {
+      const p = document.getElementById('p');
+      const w = document.getElementById('w');
+      p.open();
+      const opened = document.getAnimations().length;
+      p.close();
+      w.open();
+      w.close();
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      return { opened, after: document.getAnimations().length, leaving: p.hasAttribute('data-leaving') || w.hasAttribute('data-leaving') };
+    });
+    expect(r).toEqual({ opened: 0, after: 0, leaving: false });
+  });
 });
 
 test('flip: rows pushed down by an insert start where they were, move by transform on the house curve, and shift nothing', async ({ page }) => {
@@ -540,4 +555,112 @@ test('the indicator lands without sliding in when the current tab had no size at
   expect(r.shown.hidden).toBe(false);
   expect(r.shown.transform).toBe(r.shown.want);
   expect(r.anims).toEqual([]);
+});
+
+const opacitySeries = (sel) => (ms, during) => new Promise((resolve) => {
+  const el = document.querySelector(sel);
+  const out = [];
+  const t0 = performance.now();
+  during();
+  const f = () => {
+    out.push({ t: performance.now(), o: Number(getComputedStyle(el).opacity) });
+    if (performance.now() - t0 < ms) requestAnimationFrame(f);
+    else resolve(out);
+  };
+  requestAnimationFrame(f);
+});
+
+test('the palette opens on transform and opacity only, with the input focused on frame 0', async ({ page }) => {
+  await page.keyboard.press('Control+k');
+  const r = await page.evaluate((book) => {
+    const p = document.getElementById('p');
+    const parts = {};
+    for (const el of p.querySelectorAll('[part="box"], [part="overlay"]')) {
+      parts[el.getAttribute('part')] = el.getAnimations().map((a) => ({ id: a.id, props: [...new Set(a.effect.getKeyframes().flatMap((f) => Object.keys(f)))].filter((k) => book.includes(k) === false).sort() }));
+    }
+    return { parts, focused: document.activeElement === p.querySelector('[part="input"]'), open: p.hasAttribute('open') };
+  }, BOOK);
+  expect(r.open).toBe(true);
+  expect(r.focused).toBe(true);
+  expect(r.parts.box).toEqual([{ id: 'gs-move:enter', props: ['opacity', 'transform'] }]);
+  expect(r.parts.overlay).toEqual([{ id: 'gs-move:enter', props: ['opacity'] }]);
+});
+
+test('close drops open at once, stays displayed through the exit, then hides', async ({ page }) => {
+  await page.evaluate(() => document.getElementById('p').open());
+  await page.waitForTimeout(250);
+  const r = await page.evaluate(() => {
+    const p = document.getElementById('p');
+    p.close();
+    return { open: p.hasAttribute('open'), leaving: p.hasAttribute('data-leaving'), display: getComputedStyle(p).display };
+  });
+  expect(r).toEqual({ open: false, leaving: true, display: 'block' });
+  await expect(page.locator('#p')).toBeHidden();
+  expect(await page.locator('#p').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(false);
+});
+
+test('reopening the palette mid-exit turns the box around with no jump', async ({ page }) => {
+  const r = await page.evaluate(async (src) => {
+    const series = new Function(`return ${src}`)()('#p [part="box"]');
+    const p = document.getElementById('p');
+    const fresh = await series(300, () => p.open());
+    await new Promise((res) => setTimeout(res, 100));
+    let turnAt = 0;
+    const turned = await series(400, () => {
+      p.close();
+      setTimeout(() => { turnAt = performance.now(); p.open(); }, 50);
+    });
+    return { fresh, turned, turnAt, open: p.hasAttribute('open'), leaving: p.hasAttribute('data-leaving') };
+  }, opacitySeries.toString());
+  const steps = (xs) => xs.slice(1).map((v, i) => Math.abs(v.o - xs[i].o));
+  const before = r.turned.filter((s) => s.t <= r.turnAt);
+  const after = r.turned.filter((s) => s.t > r.turnAt);
+  expect(Math.min(...after.map((s) => s.o))).toBeGreaterThanOrEqual(before.at(-1).o - Math.max(0, ...steps(before)) - 0.01);
+  expect(Math.max(...steps(r.turned))).toBeLessThanOrEqual(Math.max(...steps(r.fresh)) + 0.01);
+  expect(r.open).toBe(true);
+  expect(r.leaving).toBe(false);
+});
+
+test('the palette highlight is an indicator that follows the arrows', async ({ page }) => {
+  await page.keyboard.press('Control+k');
+  await page.waitForTimeout(250);
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(250);
+  const r = await page.evaluate(() => {
+    const list = document.querySelector('#p [part="list"]');
+    const bar = list.querySelector('[part="indicator"]');
+    const row = list.querySelector('[aria-selected="true"]');
+    return { transform: bar.style.transform, want: `translateY(${row.offsetTop}px) scaleY(${row.offsetHeight / 100})`, rows: list.querySelectorAll('[part="row"]').length, background: getComputedStyle(row).backgroundColor };
+  });
+  expect(r.transform).toBe(r.want);
+  expect(r.rows).toBe(3);
+  expect(r.background).toBe('rgba(0, 0, 0, 0)');
+});
+
+test('the window enters and leaves the same way, focus trap untouched', async ({ page }) => {
+  await page.evaluate(() => document.getElementById('w').open());
+  const opening = await page.evaluate(() => document.querySelector('#w [part="frame"]').getAnimations().map((a) => a.id));
+  expect(opening).toEqual(['gs-move:enter']);
+  await expect(page.locator('#yes')).toBeFocused();
+  await page.waitForTimeout(250);
+  // an exit is 100ms, shorter when it takes over a running enter, so watch for data-leaving
+  // instead of racing it with a read after the key press
+  await page.evaluate(() => {
+    const w = document.getElementById('w');
+    window.__leaving = false;
+    new MutationObserver(() => { if (w.hasAttribute('data-leaving')) window.__leaving = true; }).observe(w, { attributes: true, attributeFilter: ['data-leaving'] });
+  });
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#w [part="frame"]')).toBeHidden();
+  expect(await page.evaluate(() => window.__leaving)).toBe(true);
+  expect(await page.locator('#w').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(false);
+});
+
+test('glitch 0 still slides the palette in', async ({ page }) => {
+  const ids = await page.evaluate(() => {
+    document.documentElement.dataset.glitch = '0';
+    document.getElementById('p').open();
+    return document.querySelector('#p [part="box"]').getAnimations().map((a) => a.id);
+  });
+  expect(ids).toEqual(['gs-move:enter']);
 });
