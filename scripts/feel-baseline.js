@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import { TRACE_CATEGORIES, COMPOSITE_IGNORED, summarizeTrace, frameCosts } from '../src/feel/trace.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const arg = (name, fallback) => {
@@ -24,14 +25,6 @@ for (const [name, v] of [['runs', RUNS], ['dpr', DPR], ['port', PORT]]) {
   }
 }
 const VIEWPORT = { width: 1470, height: 956 };
-const CATEGORIES = [
-  'disabled-by-default-devtools.timeline',
-  'disabled-by-default-devtools.timeline.frame',
-  'devtools.timeline',
-  'blink.animations',
-  'blink.user_timing',
-  'input',
-];
 
 function serve() {
   return new Promise((resolve, reject) => {
@@ -78,7 +71,7 @@ async function traced(page, drive) {
   const cdp = await page.context().newCDPSession(page);
   const events = [];
   cdp.on('Tracing.dataCollected', (e) => { for (const v of e.value) events.push(v); });
-  await cdp.send('Tracing.start', { transferMode: 'ReportEvents', traceConfig: { includedCategories: CATEGORIES, excludedCategories: ['*'] } });
+  await cdp.send('Tracing.start', { transferMode: 'ReportEvents', traceConfig: { includedCategories: [...TRACE_CATEGORIES], excludedCategories: ['*'] } });
   const out = await drive();
   const done = new Promise((r) => cdp.once('Tracing.tracingComplete', r));
   await cdp.send('Tracing.end');
@@ -98,31 +91,17 @@ function rendererMain(events) {
 }
 
 function analyze(events, startName, endName) {
-  const { pid, tid } = rendererMain(events);
-  const mark = (n) => events.find((e) => e.name === n && e.pid === pid)?.ts;
-  const start = mark(startName);
-  const end = mark(endName);
+  const s = summarizeTrace(events);
+  const at = (n) => s.marks.find((m) => m.name === n)?.ts;
+  const start = at(startName);
+  const end = at(endName);
   if (start === undefined || end === undefined) throw new Error(`trace is missing the ${startName} or ${endName} mark`);
-  const tasks = [];
-  let edge = -Infinity;
-  for (const t of events.filter((e) => e.name === 'RunTask' && e.ph === 'X' && e.pid === pid && e.tid === tid).sort((a, b) => a.ts - b.ts)) {
-    if (t.ts < edge) continue;
-    tasks.push({ ts: t.ts, dur: t.dur, tdur: t.tdur ?? t.dur }); // chromium drops tdur on 1us tasks
-    edge = t.ts + t.dur;
-  }
-  const frames = events.filter((e) => e.name === 'BeginMainThreadFrame' && e.pid === pid && e.tid === tid && e.ts >= start && e.ts <= end).map((e) => e.ts).sort((a, b) => a - b);
-  const cpu = frames.map((a, i) => {
-    const b = frames[i + 1] ?? end;
-    return tasks.filter((t) => t.ts >= a && t.ts < b).reduce((s, t) => s + t.tdur, 0) / 1000;
-  });
-  const inside = tasks.filter((t) => t.ts >= start && t.ts <= end);
+  const inside = s.tasks.filter((t) => t.ts >= start && t.ts <= end);
   return {
-    cpu,
+    cpu: frameCosts(s, start, end).map((f) => f.cpu),
     stalls: inside.filter((t) => t.dur > 50_000 && t.tdur <= 50_000).length,
-    drops: events.filter((e) => e.name === 'PipelineReporter' && e.ph === 'b' && e.pid === pid && e.ts >= start && e.ts <= end
-      && e.args?.frame_reporter?.state === 'STATE_DROPPED' && e.args?.frame_reporter?.affects_smoothness === true).length,
-    composite: events.filter((e) => e.name === 'Animation' && e.pid === pid && typeof e.args?.data?.compositeFailed === 'number' && e.args.data.compositeFailed !== 0)
-      .map((e) => e.args.data.compositeFailed),
+    drops: s.drops.filter((d) => d.ts >= start && d.ts <= end).length,
+    composite: s.animations.map((a) => a.compositeFailed & ~COMPOSITE_IGNORED).filter((b) => b !== 0),
   };
 }
 

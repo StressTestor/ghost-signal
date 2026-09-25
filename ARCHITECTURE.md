@@ -47,6 +47,7 @@ src/
   fonts/                  Doto-VariableFont.woff2 (~8.7kb) OFL.txt SOURCE
   gs.js grid.js expressions.js copy.js
   components/             mosaic face decode tape window toast row container empty error splash wallpaper palette (13 modules)
+  feel/                   the feel harness, pure node modules first (task 6 adds the probe and the fixture)
 gen/                      GhostSignal.swift ghost_signal.rs tokens.md
 gallery/                  index.html gallery.js apps/probe/ screenshots/ (gitignored)
 test/unit                 node:test
@@ -195,4 +196,4 @@ node scripts/feel-baseline.js --runs=20 --dpr=2
 node scripts/record-feel-fixtures.js
 ```
 
-last updated: 2026-09-25 (v0.2 in progress, plan task 1)
+last updated: 2026-09-25 (v0.2 in progress, plan task 2)
