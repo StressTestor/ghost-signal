@@ -344,8 +344,40 @@ test('the gallery paints once, built: loading it records no layout shift', async
     observing: PerformanceObserver.supportedEntryTypes.includes('layout-shift'),
     visibility: getComputedStyle(document.body).visibility,
     shifts: window.__shifts,
+    failed: 'galleryFailed' in document.documentElement.dataset,
   }));
   expect(r.observing).toBe(true);
   expect(r.visibility).toBe('visible');
   expect(r.shifts).toEqual([]);
+  expect(r.failed).toBe(false);
+});
+
+test('a gallery that fails to build shows what it built and stays loud', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  // the probe's flavor sheet 404s, so mountProbe rejects the module's top-level await after the
+  // faces are built and before ready is set
+  await page.route('**/apps/probe/flavor.css', (r) => r.fulfill({ status: 404, body: '' }));
+  await page.goto('/gallery/');
+  await page.waitForSelector('html[data-gallery-failed]', { state: 'attached', timeout: 10_000 });
+  const r = await page.evaluate(() => ({
+    ready: 'galleryReady' in document.documentElement.dataset,
+    visibility: getComputedStyle(document.body).visibility,
+    faces: document.querySelectorAll('#face-grid gs-face').length,
+  }));
+  expect(r).toEqual({ ready: false, visibility: 'visible', faces: 7 });
+  expect(errors).toEqual(['probe flavor.css failed to load']);
+});
+
+test('a gallery module that never loads still reveals the page', async ({ page }) => {
+  // a 404 in the static import graph fails before any gallery.js line runs, and it fires on the
+  // module script element, never on window
+  await page.route('**/src/components/splash.js', (r) => r.fulfill({ status: 404, body: '' }));
+  await page.goto('/gallery/');
+  await page.waitForSelector('html[data-gallery-failed]', { state: 'attached', timeout: 10_000 });
+  const r = await page.evaluate(() => ({
+    ready: 'galleryReady' in document.documentElement.dataset,
+    visibility: getComputedStyle(document.body).visibility,
+  }));
+  expect(r).toEqual({ ready: false, visibility: 'visible' });
 });
