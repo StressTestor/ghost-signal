@@ -58,7 +58,11 @@ test/feel                 playwright feel project: harness.spec.js (controls), p
 ## key patterns
 
 - semantic tokens only, `gs-` prefix. `--gs-motion-<name>` durations, `--gs-step-<name>` step
-  functions, `--gs-ease-hover`. status aliases `--gs-color-idle|working|crash` point at their tokens.
+  functions, `--gs-ease-<name>` curves, `--gs-distance-<name>` offsets. status aliases
+  `--gs-color-idle|working|crash` point at their tokens. `loadTokens` runs `validateMotion`, so a
+  stepped ease, an eased step, an overshooting curve or a spatial duration off the 60hz frame grid
+  fails `npm run gen`. the `feel` group is read by `src/feel/budgets.js` and never reaches css. the
+  hover pair (`--gs-motion-hover` 0ms, `--gs-ease-hover`) stays emitted until 0.3.
 - the status vocabulary is `idle working ok warn deny bypass crash`. `coerceStatus` turns anything
   else into `warn` with a console error. the face is always green; status lives on dots, bars, toasts.
 - motion is a hard cut. only `color`, `border-color`, `background-color` ease, on hover and focus.
@@ -198,4 +202,4 @@ node scripts/feel-baseline.js --runs=20 --dpr=2
 node scripts/record-feel-fixtures.js
 ```
 
-last updated: 2026-09-25 (v0.2 in progress, plan task 7)
+last updated: 2026-09-25 (v0.2 in progress, plan task 8)

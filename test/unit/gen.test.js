@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadTokens, toSwift, toRust, toMarkdown } from '../../scripts/lib/tokens.js';
@@ -44,4 +45,23 @@ test('toMarkdown lists both themes and every group', async () => {
   assert.match(md, /\| `--gs-motion-decode` \| `250ms` \|/);
   assert.match(md, /\| `idle` \| `text-faint` \| `\(｡◕‿↼\)` \|/);
   assert.doesNotMatch(md, /—/);
+});
+
+const sha = (s) => createHash('sha256').update(s).digest('hex');
+
+test('swift and rust output is byte-identical to v0.1.0: neither emits motion yet', async () => {
+  const t = await loadTokens();
+  assert.equal(sha(toSwift(t)), 'cb999aaabb833a963bc6f0ebc4f53b213771c83df8bb3df524a7ee9a82d0b29a');
+  assert.equal(sha(toRust(t)), '106bbc65c49c125fec427e812b8ed9d87766839eb2e74c0da5de44be1e2812cb');
+});
+
+test('markdown has the distance group, the feel budgets table and the hover deprecation', async () => {
+  const md = toMarkdown(await loadTokens());
+  assert.match(md, /^## distance$/m);
+  assert.match(md, /\| `--gs-distance-toast` \| `24px` \|/);
+  assert.match(md, /^## feel budgets$/m);
+  assert.match(md, /\| `frame` \| `16\.7ms` \|/);
+  assert.match(md, /\| `properties` \| `transform, opacity` \|/);
+  assert.match(md, /deprecated, removed in 0\.3: `--gs-motion-hover`, `--gs-ease-hover`/);
+  assert.match(md, /\| `--gs-motion-decode` \| `250ms` \|/);
 });
