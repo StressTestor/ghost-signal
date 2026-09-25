@@ -8,6 +8,7 @@ import { lintMotion } from '../../scripts/lib/motion-lint.js';
 const src = new URL('../../src/', import.meta.url);
 const base = await readFile(new URL('base.css', src), 'utf8');
 const fx = await readFile(new URL('fx.css', src), 'utf8');
+const motion = await readFile(new URL('motion.css', src), 'utf8');
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '');
 
 test('font-face points at the bundled doto file and nothing is fetched', async () => {
@@ -85,4 +86,19 @@ test('every keyframe in fx.css is a gs-event-* name, and fx.css lints clean', ()
   const names = [...fx.matchAll(/@keyframes\s+([a-z0-9-]+)/g)].map((m) => m[1]).sort();
   assert.deepEqual(names, ['gs-event-flare', 'gs-event-glitch-a', 'gs-event-glitch-b', 'gs-event-glitch-shift', 'gs-event-mosh', 'gs-event-mosh-a', 'gs-event-mosh-b', 'gs-event-tape']);
   assert.deepEqual(lintMotion(fx, 'src/fx.css'), []);
+});
+
+test('motion.css: transitions are none or transform/opacity on motion and ease tokens, no data-glitch, all inside no-preference', async () => {
+  assert.deepEqual(lintMotion(motion, 'src/motion.css'), []);
+  assert.doesNotMatch(strip(motion), /data-glitch/);
+  const rules = cssRules(motion);
+  assert.ok(rules.length >= 6);
+  for (const r of rules) {
+    if (r.parents.some((p) => p.startsWith('@keyframes'))) continue;
+    assert.ok(r.parents.includes('@media (prefers-reduced-motion: no-preference)'), `${r.selector} sits outside the no-preference query`);
+    const t = /transition:\s*([^;]+)/.exec(r.body);
+    if (t === null || t[1].trim() === 'none') continue;
+    assert.match(t[1].trim(), /^(transform|opacity) var\(--gs-motion-[a-z-]+\) var\(--gs-ease-[a-z-]+\)$/, r.selector);
+  }
+  assert.deepEqual(scanCss(motion, await loadTokens()), []);
 });

@@ -171,6 +171,9 @@ textarea { resize: vertical; min-height: 4em; }
 
 .gs-icon { width: 16px; height: 16px; fill: currentColor; vertical-align: -3px; }
 
+/* the hairline under a sticky header. motion.css fades it in with scroll; without motion it just shows */
+.gs-scroll-edge { display: block; height: 1px; background-color: var(--gs-color-hairline); }
+
 /* components. light dom, so every rule is a plain attribute selector */
 
 gs-mosaic, gs-face { display: inline-block; line-height: 0; }

@@ -1,0 +1,19 @@
+/* ghost signal motion layer: every spatial css rule, and nothing else. optional: without this file
+   every spatial change is a cut, the v0.1 look, and motion.js checks the --gs-space flag only this
+   file sets. there is no data-glitch selector here: glitch 0 kills signal, never space. under
+   reduced motion nothing in here exists (spec 3.3, 6.1) */
+@media (prefers-reduced-motion: no-preference) {
+  :root { --gs-space: 1; }
+
+  [part="indicator"] { transition: transform var(--gs-motion-indicator) var(--gs-ease-move); }
+  gs-toast [part="slot"] { transition: transform var(--gs-motion-shift) var(--gs-ease-move); }
+  [data-gs-value] { transition: transform var(--gs-motion-value) var(--gs-ease-move); }
+  [data-gs-still], [data-gs-still] * { transition: none; }
+
+  /* a sticky header's hairline fades in over the first 24px of scroll, on the compositor's scroll
+     timeline. content itself never moves with scroll */
+  @supports (animation-timeline: scroll()) {
+    .gs-scroll-edge { animation: gs-spatial-edge linear both; animation-timeline: scroll(nearest); animation-range: 0 24px; }
+  }
+}
+@keyframes gs-spatial-edge { from { opacity: 0; } to { opacity: 1; } }

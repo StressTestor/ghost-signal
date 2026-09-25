@@ -42,10 +42,10 @@ scripts/
   lib/                    tokens.js contrast.js icons.js schema.js cli.js motion-lint.js
 schema/                   app.v1.json flavor.v1.json
 src/
-  tokens.css base.css fx.css icons.svg icons.js (generated)
+  tokens.css base.css fx.css motion.css icons.svg icons.js (generated: tokens.css icons.*)
   icons/*.grid            twenty 16x16 glyph sources
   fonts/                  Doto-VariableFont.woff2 (~8.7kb) OFL.txt SOURCE
-  gs.js grid.js expressions.js copy.js
+  gs.js grid.js expressions.js copy.js motion.js
   components/             mosaic face decode tape window toast row container empty error splash wallpaper palette (13 modules)
   feel/                   probe.js (in-page recorder) playwright.js (the fixture) trace.js budgets.js evaluate.js format.js errors.js index.js
 gen/                      GhostSignal.swift ghost_signal.rs tokens.md
@@ -68,7 +68,9 @@ test/feel                 playwright feel project: harness.spec.js (controls), p
 - state changes are hard cuts. `base.css` declares no transition and no animation: hover, focus and
   the press (`translateY(1px)` on an active button, row head or palette row) all cut.
   every animation in `fx.css` is gated on `:root[data-glitch="1"]` or `"2"`; reduced motion zeroes
-  the motion tokens and `gs.js` forces `data-glitch="0"` on import.
+  the motion tokens and `gs.js` forces `data-glitch="0"` on import. v0.2 in progress: `motion.css`
+  (optional) and `motion.js` add eased spatial motion on transform and opacity; every helper cancels
+  its web animation when it lands.
 - `gs-mosaic` has no rng and draws integer-aligned rects, so canvas hashes are pinned in
   `test/e2e/__snapshots__/`. `hash()` is `<width>x<height>:<fnv-1a of the getImageData rgba
   bytes>`, synchronous and free of the png encoder, so a browser changing its compression can't
@@ -214,4 +216,4 @@ node scripts/feel-baseline.js --runs=20 --dpr=2
 node scripts/record-feel-fixtures.js
 ```
 
-last updated: 2026-09-25 (v0.2 in progress, plan task 10)
+last updated: 2026-09-25 (v0.2 in progress, plan task 15)

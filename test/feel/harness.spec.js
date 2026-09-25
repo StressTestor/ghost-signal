@@ -376,3 +376,20 @@ test('the self test sees the planted input, task and shift', async ({ page, feel
   const result = await feel.selfTest();
   expect(result.seen).toEqual(expect.arrayContaining(['input', 'shift', 'task']));
 });
+
+test('motion.js: a slot that entered, then restacks by transition, composites', async ({ page, feel }) => {
+  test.setTimeout(90_000);
+  const [report] = await feel.scenario('enter-restack', {
+    setup: async () => {
+      await page.goto(url('enter-restack'));
+      await page.waitForFunction(() => window.ready === true);
+    },
+    steps: async (s) => {
+      await s.event('first slot arrives', () => page.evaluate(() => window.arrive()));
+      await s.event('second slot arrives', () => page.evaluate(() => window.arrive()));
+      await s.event('restack', () => page.evaluate(() => window.restack()));
+    },
+  });
+  expect(report.result).toBe('pass');
+  expect(report.runs[0].seen.composites, 'the positive control: the trace saw the enters and the restack').toBeGreaterThanOrEqual(3);
+});
