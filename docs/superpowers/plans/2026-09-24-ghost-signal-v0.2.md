@@ -12,6 +12,8 @@
 
 **Scope:** this repo, branch `feat/v0.2` (head `23fe5e0`), from the approved spec through the `0.2.0` version bump. the tag is joe's (spec 15 step 9). seance is out of scope (spec 12 and 15 step 10 are a separate plan).
 
+**Before task 1:** decision d1 (below, "joe's call before execution") goes to joe first. tasks 1 to 22 don't depend on it and may run while he decides; task 23 step 3 onward and task 24 wait for his answer.
+
 ## global constraints
 
 every task's requirements include this section.
@@ -25,7 +27,8 @@ every task's requirements include this section.
 - a bash command containing the word "sentinel" or the two characters `->` can be blocked by a PreToolUse hook. put such a command in a script file under the scratch dir and run the file.
 - no mission control posts, no `~/.claude/mc-outbox.jsonl`, no subagents spawned from inside a task.
 - copy, docs and failure text: lowercase headings, no em dashes, no exclamation points. comments may be deadpan ghost voice (this is joe's private project) but must state a true constraint.
-- the gates before every commit, run from the repo root after staging (so `git diff --exit-code` compares fresh generator output against what is staged): `npm run gen && git diff --exit-code`, `npm test`, `npm run check`, `npm run e2e`, and `npm run feel` from task 6 on. every task leaves every gate green.
+- the gates before every commit, run from the repo root after staging (so `git diff --exit-code` compares fresh generator output against what is staged): `npm run gen && git diff --exit-code`, `npm test`, `npm run check`, `npm run e2e`, and `npm run feel` from task 6 on. every task leaves every gate green. that includes task 23: `test/feel/gallery.feel.js` is committed only once it passes under the option joe picked for d1, and task 24 runs only after task 23's commit. if d1 has no answer when task 22 is done, execution pauses there, every gate green, nothing red committed.
+- a commit that changes what `ARCHITECTURE.md` describes (a directory or script in its tree, a command, a ci step, a key pattern) updates it in the same commit, last-updated line included. tasks 1, 2, 6, 7, 9, 15 and 22 carry that step explicitly; task 24 writes the prose that needs the whole release.
 - nothing animates a property other than `transform` or `opacity` (spec 3.2). space is eased with `--gs-ease-*`, signal is stepped with `--gs-step-*` or `steps()`. one carrier per family per element. no overshoot: every cubic-bezier y stays inside 0..1.
 - the m5 profile is 1470x956 css px, `deviceScaleFactor: 2`, 60hz. the feel budgets are `frame 16.7ms`, `input 50ms`, `task 50ms`, `answer 50ms`, `shift 0`, `settle 1000ms`, `runs 3`, `vsyncMiss 1.5`, properties `transform` and `opacity`. budgets only tighten. there is no loosening knob.
 - zero runtime dependencies. no file under `src/feel/` imports `@playwright/test`.
@@ -49,7 +52,57 @@ the spikes ran from scratch on 2026-09-24 against the pinned stack (chromium 145
 
 ## what the planning dry run proved
 
-after writing, the code blocks of tasks 1 to 21 were applied to scratch copies of the repo (never the repo) and run on the m5: the fixture recorder and every `src/feel` unit test (50 green), the 15 harness controls in the feel project (15 green, each negative firing its own check on its own step, the self test seeing input, task and shift), tasks 8 to 20 over the existing suites (106 unit and 77 e2e green, `contrast ok`, `lint-motion` silent on all three sheets, swift and rust byte-identical), and the gallery work of tasks 14 and 21 (gallery specs green). the fixes that run found are already folded into the tasks below. what it could not make green is task 23's scenario; task 23 carries those numbers and the stop rule.
+after writing, the code blocks of tasks 1 to 21 were applied to scratch copies of the repo (never the repo) and run on the m5: the fixture recorder and every `src/feel` unit test (50 green), the 15 harness controls in the feel project (15 green, each negative firing its own check on its own step, the self test seeing input, task and shift), tasks 8 to 20 over the existing suites (106 unit and 77 e2e green, `contrast ok`, `lint-motion` silent on all three sheets, swift and rust byte-identical), and the gallery work of tasks 14 and 21 (gallery specs green). the fixes that run found are already folded into the tasks below. after the plan review, tasks 1 to 7 were extracted from this revision into a fresh scratch tree and run again the same way (2026-09-25): the recorder wrote all three fixtures (the `reuse` one with three animations on one id), 55 `src/feel` unit tests and 19 harness tests green. task 23 step 3's option c1 code was applied on top and its unit tests and control passed too.
+
+the gallery scenario (task 23) was then run in that scratch tree with `GS_FEEL_RUNS=1`, and a second pass on 2026-09-25 took its failures apart. four findings changed this plan:
+
+1. most of the composite bit 6 failures were a decoder bug. chromium reuses an `Animation` event's `id2.local` as soon as the previous animation's `e` lands (a three-animation recording on chromium 145 used `0x1a` for all three), and task 2's first `compositeResults` merged every event under one id into one record, OR-ing the bits and keeping the latest node name. the toast slot's bit 6 bled into whatever drew the same id next: the view body and the tab indicator in `calm`, the `gs-face` glitches in `g1-light`. with a record opened on each `b` and closed on its `e`, those attributions vanish. task 2 now decodes that way and pins it on a recorded fixture.
+2. one bit 6 was real. `enter()` left its finished `fill: none` animation attached to the slot, and when the restack transition started on the same slot, chromium 145 kept that transition on the main thread (bit 6: a web animation outranks a css transition in composite order, finished or not, until it's cancelled or collected). a scratch control reproduced it three runs in three, and cancelling the animation when it lands removes it, also three in three. tasks 15 and 16 now cancel on finish, task 7 plants the pattern as a negative control, and task 15 commits the positive one. with both fixes the scratch gallery reported "all composited" on all five entries, and `calm` and `still` passed.
+3. the theme and glitch frames are the page's own cost. task 23's first draft read them as tracing overhead, from a flip timed four times inside one `evaluate` (3 to 5ms after the first, on warm style caches). timed the way a person flips, one click per fresh page with 300ms around it and nothing traced, the flip's style recalc alone costs 10.7 to 17.0ms. that is decision d1 below.
+4. the frame check's `inside:` line named the wrong frame's work. `frameCosts` counts a task's cpu in the interval where the task starts, which is a hair before the `BeginMainThreadFrame` it emits, but picked the heavy children by clock range, so they came from the next interval. the bad-frame control printed the probe's own `loop` and `sweep` for a 30ms rAF burn, and its `toContain('burn')` passed only because the step is called "burn ten frames". task 2 now takes the children from inside the counted tasks (the control then prints `FunctionCall test/feel/pages/bad-frame.html:16 burn 30ms x1`), and task 7 asserts on that line. the draft's "forced from (inline):7117 raf" on the theme frames was the same misattribution.
+
+## joe's call before execution (decision d1)
+
+spec 8.5 says there is no loosening knob and 7.4 says an exemption is right only when the page is doing what it should. the gallery's theme and glitch switches break the 16.7ms frame budget on the m5 itself, with or without the trace, and no fix that keeps the steps and the budget is known. that call is joe's, and the numbers exist now, so it goes to him before task 1 instead of at task 23.
+
+measured on the m5 on 2026-09-25 (chromium 145.0.7632.6 headless shell, 1470x956 @2x, the scratch tree with every task 1 to 21 change, the theme and glitch splits from task 23 step 3, and the two composite fixes). scripts under `.superpowers/sdd/2026-09-24-ghost-signal-v0.2/bit6/`:
+
+| measurement | theme light | theme dark | glitch 2 | glitch 1 |
+|---|---|---|---|---|
+| style recalc forced right after the click, no probe, no trace (median of 5 fresh pages, `recalc.mjs`) | 15.3ms | 12.0ms | 16.2ms | 13.1ms |
+| the same with the probe installed | 15.4ms | 12.6ms | 16.3ms | 13.6ms |
+| the same with the probe and the full trace | 14.1ms | 10.8ms | 16.1ms | 13.1ms |
+| the attribute set from `evaluate` with no input, 300ms apart (`evalflip.mjs`) | 16.7ms | 13.2ms | 12.5ms | 13.5ms |
+| over-budget frames in the traced gallery scenario (main-thread cpu, `GS_FEEL_RUNS=1`, two passes over `g1-dark`, `g2-dark`, `g1-light`) | 17.3 to 23.8ms | 17.7 to 23.5ms | 17.1 to 20.2ms | 17.0 to 20.8ms |
+
+a given flip lands under 16.7ms in one pass and over in the next often enough that the three-run median fails it anyway. the controls held too: a click that changes nothing (the `h2` heading, the theme button of the theme already set) reads 0.0 to 0.2ms through the same timer. the worst traced frame splits into one input task of 14.2ms (an `UpdateLayoutTree` of 10.7ms over 3730 elements, the pointer listeners, 1.8ms of layout and prepaint) and a 3.3ms paint, layerize and commit task. tracing and the probe move the recalc by about 1ms either way, so the traced 17 to 24ms is the flip plus its paint.
+
+tried, and it didn't move the recalc (so nobody tries these again): `content-visibility: auto` on the 300 list rows or on every gallery section, removing `#motion-list` outright (303 elements), and trimming the trace to the gate categories (frames stayed at 17.9 to 24.4ms). devtools selector stats put selector matching at 0.9 to 1.1ms of a 14.6 to 19.7ms recalc, so nearly all of the cost is style resolution over every element. seance's `c` calm toggle flips the same `data-glitch` on `:root`, so every app with a big page hits this.
+
+the options, and what tasks 23 and 24 do under each:
+
+| option | what it means | task 23 | task 24 |
+|---|---|---|---|
+| a. a cheaper flip | cut what a whole-page restyle costs in ghost signal's css and components until the traced frame fits | task 23 step 3's option a paragraph: measure per element and per stylesheet what the recalc spends (a `disabled-by-default-blink.debug` selector-stats and element-count pass, then one lever at a time: the component stylesheets' custom property reads, the universal `::before`/`::after`/`::selection`/`::-webkit-scrollbar` rules, the inherited token count), each lever judged by step 3's recalc timer and the traced frame. success is the scenario green with no exemption. no lever is known today, so the step is time-boxed to one working session; if nothing gets every theme and glitch frame under 16.7ms three runs in a row, stop and go back to joe with the lever table | as written |
+| b. trace-free measurement for recalc-bound frames | judge a frame whose trace cost is mostly `UpdateLayoutTree` by an untraced in-page timer instead of trace `tdur` | changes spec 7.7's frame source and 8.4's cpu-over-wall rule, so it needs the spec edit first. the numbers above say it doesn't reach green: untraced, the recalc alone is 10.7 to 17.0ms before the ~2ms of input dispatch and the ~3ms of paint. if joe picks it anyway, the step implements it, reruns, and comes back to joe with the untraced frames | waits for the result |
+| c. joe's call on those steps | c1: a per-step frame exemption, `{ frame: false, why }`, with the same rules as `answer: false` (it needs a why, prints in every report, and fails the test when no run used it, so the day the flip fits the budget the exemption has to go). c2: the theme and glitch steps leave `gallery.feel.js` with the numbers recorded in the spec. c3: joe changes 8.5 | c1: task 23 step 3's c1 paragraph (probe, playwright, evaluate, format, their unit tests and a control), then the six theme and glitch steps carry it (four in the full set, two in the light set). c2: the scenario drops those six steps, and the commit body quotes joe. c3: whatever joe writes into 8.5 | c1: the readme's feel section documents `{ frame: false, why }`. c2, c3: the readme says which steps aren't held and why |
+
+recommendation: c1 for 0.2.0, with option a as its own follow-up. c1 keeps joe's 16.7ms, makes the hitch visible in every report, and can only ratchet: an unused exemption fails, so it can't outlive the cost it names. option a is worth doing, but it's open-ended and every app's flip benefits from it, which makes it a release of its own. d1 is joe's call and nothing in task 23 step 3 onward runs until he makes it.
+
+```mermaid
+flowchart LR
+  d1{{"d1: joe's call"}}
+  t1["1 baseline, fixtures"] --> t2["2 trace decoder"] --> t35["3-5 budgets, evaluate, format"] --> t67["6-7 probe, fixture, controls, ci"]
+  t67 --> t814["8-14 tokens, lint, known violations"] --> t1521["15-21 motion.js, components, gallery motion"] --> t22["22 showcase"]
+  t22 --> t23a["23 steps 1-2: scenario written and run"]
+  d1 -. "asked before task 1" .-> t23b
+  t23a --> t23b{"23 step 3: option a, b or c"}
+  t23b -- "a: cheaper flip" --> green["23 commit: gallery.feel.js green"]
+  t23b -- "c1: frame exemption" --> green
+  t23b -- "c2, c3" --> green
+  t23b -- "b, or a with no lever" --> back["back to joe"]
+  green --> t24["24 docs and 0.2.0"] --> tag["joe: strict run, look, tag"]
+```
 
 ## deviations from the spec, decided up front
 
@@ -64,6 +117,15 @@ after writing, the code blocks of tasks 1 to 21 were applied to scratch copies o
 - `indicator` moves along one axis and stretches along the same axis: `axis: 'x'` writes `translateX(x) scaleX(w / 100)`, `axis: 'y'` writes `translateY(y) scaleY(h / 100)`. the cross-axis size comes from css, so a 3px accent bar stays 3px thick. its first placement uses `data-gs-still` plus one forced style read instead of waiting a frame, which gives the same no-slide-in result.
 - the version bump also moves the six unit fixtures that pin `"ghostSignal": "^0.1"` to `"^0.2"`, and `flavor-bad-range.json` from `^0.2` to `^0.3` (its test asserts a range that excludes the installed version). spec 11 lists only the probe app; without these, `npm test` fails at the bump.
 - task 1 writes its results into the spec as a new section 8.7, since they decide numbers the spec left open.
+- the composite bit 6 fix has no task of its own. the plan review asked for one before task 23 to find the cause; the cause is found (the three findings above), so the fixes land in the tasks that write the code: the decoder in task 2, `enter` and `flip` cancelling on finish in tasks 15 and 16, the negative control in task 7 and the positive one in task 15. a separate task would rediscover what's already known and patch code two tasks after it was written.
+- the one-carrier rule stays space against signal, as spec 3.2 writes it. two space animations on one element are caught by the composite check (bit 6), now attributed to the right element, and task 7's `bad-overlap` control proves the check sees it.
+- `mode: 'calm'` gets the same guard spec 7.4 gives `still`: a calm run whose page isn't at `data-glitch="0"` when armed throws `GsFeelUnevaluable`, since its glitch 0 rules would otherwise pass on a page where they can't fire. the probe's `arm()` returns the apparatus snapshot, so visibility (spec 8.2 says "when arming"), reduced motion and the glitch level are all checked at arm time, not only after setup.
+- the fixture waits until 600ms have passed since the warm-up's `Shift` before arming. chrome keeps `hadRecentInput` true for 500ms after a discrete input (spec 7.7), and without the gap a shift in the first step can be excused by the warm-up's own keypress.
+- the probe records the animations already running when it arms (spec 7.5 wants their properties and families checked) but never counts them as an answer, and an animation found by the sweep only answers when it started after the input.
+- the composite check has its own apparatus check: a run where the probe saw an animation start while armed and the trace holds no `Animation` event at all throws `GsFeelUnevaluable`, so a trace that lost `blink.animations` can't print "all composited".
+- an unevaluable scenario attaches `feel-<scenario>-<matrix>.json` with `result: 'unevaluable'` next to the text (spec 7.9), and every report's runs carry their shifts, animations and answers, not only counts.
+- `scripts/sync-ghost-signal.sh` also copies `tokens.json`, since `src/feel/budgets.js` reads the budgets from it and a vendored copy without it can't run the harness (spec 7.1 assumed `src/` was enough).
+- the ci job's `timeout-minutes` goes from 20 to 40 (the step caps add up to 31 minutes plus setup), and both baseline steps get `continue-on-error: true`, since spec 8.6 calls them informational.
 
 ## file structure
 
@@ -73,9 +135,11 @@ ghost-signal/
                                         ease enter exit move, distance group, feel group
   package.json                        e2e = --project=chromium, feel, showcase scripts, version 0.2.0
   playwright.config.js                chromium, feel and showcase projects
-  .github/workflows/ci.yml            feel baseline (informational), feel step, report artifacts
+  .github/workflows/ci.yml            feel baseline (informational), feel step, report artifacts, job cap 40
   .gitignore                          + gallery/showcase/
+  ARCHITECTURE.md                     updated by every task that adds structure, finished in task 24
   scripts/
+    sync-ghost-signal.sh              + copies tokens.json (the feel budgets)
     feel-baseline.js                  new: clean control n times, one json line of runner numbers
     record-feel-fixtures.js           new: dev script, records the chromium 145 fixture traces
     showcase-clips.sh                 new: webm recordings to mp4 clips and stills
@@ -104,15 +168,17 @@ ghost-signal/
   gallery/index.html gallery.js       motion.css, motion section, query params, load shift fix
   test/
     unit/feel-trace.test.js feel-budgets.test.js feel-evaluate.test.js feel-format.test.js
+    unit/feel-probe.test.js feel-index.test.js
     unit/motion-lint.test.js motion.test.js toast.test.js
-    unit/fixtures/feel/*.trace.json   recorded by scripts/record-feel-fixtures.js
+    unit/fixtures/feel/*.trace.json   click-70ms composite reuse, recorded by scripts/record-feel-fixtures.js
     unit/fixtures/motion-lint/*.css   one bad sheet per lint rule
     unit/fixtures/tokens-bad-motion.json
     e2e/motion.spec.js toast.spec.js  new. row.spec.js decode.spec.js gallery.spec.js grow
     e2e/pages/motion.html toast.html drawer.html
     feel/harness.spec.js              positive and negative controls, selfTest
     feel/gallery.feel.js              the real scenario
-    feel/pages/*.html                 clean transform-no-shift bad-* untrusted
+    feel/pages/*.html                 clean transform-no-shift bad-* (bad-overlap included) untrusted,
+                                        enter-restack (the one control that loads ghost signal)
     showcase/motion.showcase.js       video walk of every motion at glitch 0, 1, 2
 ```
 
@@ -143,13 +209,14 @@ spec 15 step 1 and spec 8.6. the harness doesn't exist yet, so the baseline is a
 - Create: `test/feel/pages/clean.html`
 - Create: `scripts/feel-baseline.js`
 - Create: `scripts/record-feel-fixtures.js`
-- Create: `test/unit/fixtures/feel/click-70ms.trace.json`, `test/unit/fixtures/feel/composite.trace.json` (generated by the recorder, committed)
-- Modify: `.github/workflows/ci.yml` (informational baseline step and artifact)
+- Create: `test/unit/fixtures/feel/click-70ms.trace.json`, `test/unit/fixtures/feel/composite.trace.json`, `test/unit/fixtures/feel/reuse.trace.json` (generated by the recorder, committed)
+- Modify: `.github/workflows/ci.yml` (informational baseline step and artifact, job cap)
+- Modify: `ARCHITECTURE.md` (the two scripts, the baseline ci step)
 - Modify: `docs/superpowers/specs/2026-09-24-ghost-signal-v0.2-design.md` (new section 8.7 with the numbers)
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `test/feel/pages/clean.html` exposing `window.cleanInsert()` and `window.cleanToasts(n)`, a `#toggle` button, a `#scroller` with a scroll-driven edge. fixture files shaped `{ "chromium": "<version>", "traceEvents": [ ... ] }`. spec 8.7 holds four decisions later tasks read: `STEADY_MISSES` (task 6), `DROPS_GATE` (task 4), the ci dpr (task 6), the `bad-composite` bits (task 7).
+- Produces: `test/feel/pages/clean.html` exposing `window.cleanInsert()` and `window.cleanToasts(n)`, a `#toggle` button (the `t` key presses it too), a `#scroller` with a scroll-driven edge. fixture files shaped `{ "chromium": "<version>", "traceEvents": [ ... ] }`. spec 8.7 holds four decisions later tasks read: `STEADY_MISSES` (task 6), `DROPS_GATE` (task 4), the ci dpr (task 6), the `bad-composite` bits (task 7).
 
 - [ ] **Step 1: write the clean control page**
 
@@ -191,6 +258,9 @@ spec 15 step 1 and spec 8.6. the harness doesn't exist yet, so the baseline is a
     // reports anything on this page is measuring itself (¬‿¬)
     const toggle = document.getElementById('toggle');
     toggle.addEventListener('click', () => toggle.setAttribute('aria-pressed', String(toggle.getAttribute('aria-pressed') !== 'true')));
+    // a fast key press gets no event timing entry at all (spec p5), so the key step in the clean
+    // control proves the probe's own trusted-keydown and eventCounts path carries a key step alone
+    document.addEventListener('keydown', (e) => { if (e.key === 't') toggle.click(); });
     const list = document.getElementById('list');
     for (let i = 0; i < 30; i++) list.append(Object.assign(document.createElement('div'), { textContent: `row ${i}` }));
     const scroller = document.getElementById('scroller');
@@ -505,6 +575,24 @@ const PAGES = {
       await mark(page, 'gs-feel:1:0:end');
     },
   },
+  // three animations one after another: chromium hands the second and third the id2.local the
+  // first one freed, so a decoder keyed on the id alone merges three animations into one record
+  reuse: {
+    html: `<!doctype html><html><body>
+      <div id="a" style="width:80px;height:40px;background:#0ec224">a</div>
+      <p>an <span id="inl">inline span</span></p>
+      <div id="b" style="width:80px;height:40px;background:#0ec224">b</div>
+      ${RAF_LOOP}
+    </body></html>`,
+    async drive(page) {
+      await mark(page, 'gs-feel:1:0:start');
+      for (const id of ['inl', 'a', 'b']) {
+        await page.evaluate((i) => document.getElementById(i).animate([{ transform: 'translateX(0)' }, { transform: 'translateX(40px)' }], { duration: 100, id: `gs-move:${i}` }), id);
+        await page.waitForTimeout(300);
+      }
+      await mark(page, 'gs-feel:1:0:end');
+    },
+  },
 };
 
 async function record(browser, name, { html, drive }) {
@@ -545,7 +633,10 @@ try {
 - [ ] **Step 5: record the fixtures**
 
 Run: `node scripts/record-feel-fixtures.js`
-Expected: two lines, `wrote test/unit/fixtures/feel/click-70ms.trace.json (<n> events)` and `wrote test/unit/fixtures/feel/composite.trace.json (<n> events)`, each file under 400kb (`ls -la test/unit/fixtures/feel/`).
+Expected: three lines, `wrote test/unit/fixtures/feel/click-70ms.trace.json (<n> events)`, `wrote test/unit/fixtures/feel/composite.trace.json (<n> events)` and `wrote test/unit/fixtures/feel/reuse.trace.json (<n> events)`, each file under 400kb (`ls -la test/unit/fixtures/feel/`).
+
+Run: `node -e "const e=require('./test/unit/fixtures/feel/reuse.trace.json').traceEvents.filter(x=>x.name==='Animation'&&x.ph==='b');console.log(e.length, new Set(e.map(x=>x.id2.local)).size)"`
+Expected: `3 1` (three animations, one shared id), as the planning spike recorded (`0x1a` three times). `3 3` means this chromium stopped reusing ids; the task 2 reuse test then still passes, and the scratch notes record it.
 
 Then check what the task 2 tests will pin:
 
@@ -557,12 +648,22 @@ Expected: at least one `"event_type":"MOUSE_PRESSED"`.
 
 - [ ] **Step 6: add the informational baseline step to ci**
 
-in `.github/workflows/ci.yml`, after the `npm run e2e` step and before the screenshot upload, add:
+in `.github/workflows/ci.yml`, change the job's `timeout-minutes: 20` to:
 
 ```yaml
-      # informational: what a github runner can hold on the clean control (spec 8.6). gates nothing
+    # the step caps add up to 31 minutes (install 8, e2e 10, feel 10 from task 7, baseline 3) plus
+    # about 5 of npm ci, gen, unit and contrast. 20 would kill a run whose every step is inside its cap
+    timeout-minutes: 40
+```
+
+then, after the `npm run e2e` step and before the screenshot upload, add:
+
+```yaml
+      # informational: what a github runner can hold on the clean control (spec 8.6). gates nothing,
+      # so a baseline crash never turns ci red
       - run: node scripts/feel-baseline.js --runs=20 --dpr=2 && node scripts/feel-baseline.js --runs=20 --dpr=1
         timeout-minutes: 8
+        continue-on-error: true
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
@@ -571,10 +672,14 @@ in `.github/workflows/ci.yml`, after the `npm run e2e` step and before the scree
           if-no-files-found: ignore
 ```
 
-- [ ] **Step 7: gates, then commit and push**
+- [ ] **Step 7: ARCHITECTURE.md**
+
+in `ARCHITECTURE.md`: under `scripts/` in `## tree` add `feel-baseline.js        the clean control n times: the runner's frame cpu, stalls, drops, calibration` and `record-feel-fixtures.js dev only: records the chromium traces the trace.js tests read`; add `test/feel/pages          feel controls (clean.html so far)` under `test/e2e`; in `## deployment / ci` change `(job capped at 20 minutes)` to `(job capped at 40 minutes)` and append `-> \`node scripts/feel-baseline.js\` (informational, continue-on-error) -> upload \`feel-baseline\`` after the e2e step; add `node scripts/feel-baseline.js --runs=20 --dpr=2` and `node scripts/record-feel-fixtures.js` to `## commands`; set the last line to `last updated: <today> (v0.2 in progress, plan task 1)`.
+
+- [ ] **Step 8: gates, then commit and push**
 
 ```bash
-git add test/feel/pages/clean.html scripts/feel-baseline.js scripts/record-feel-fixtures.js test/unit/fixtures/feel/click-70ms.trace.json test/unit/fixtures/feel/composite.trace.json .github/workflows/ci.yml
+git add test/feel/pages/clean.html scripts/feel-baseline.js scripts/record-feel-fixtures.js test/unit/fixtures/feel/click-70ms.trace.json test/unit/fixtures/feel/composite.trace.json test/unit/fixtures/feel/reuse.trace.json .github/workflows/ci.yml ARCHITECTURE.md
 npm run gen && git diff --exit-code
 npm test
 npm run check
@@ -597,22 +702,22 @@ MSG
 git push origin feat/v0.2
 ```
 
-- [ ] **Step 8: read the ubuntu baseline from ci**
+- [ ] **Step 9: read the ubuntu baseline from ci**
 
 ```bash
 gh run list --branch feat/v0.2 --limit 1 --json databaseId,headSha,status
 ```
 
-Expected: one run whose `headSha` is the commit from step 7. then, with that id:
+Expected: one run whose `headSha` is the commit from step 8. then, with that id:
 
 ```bash
 gh run watch <databaseId> --exit-status
 gh run view <databaseId> --log | grep 'feel-baseline {'
 ```
 
-Expected: `gh run watch` exits 0 (every existing gate green, the baseline step informational) and two `feel-baseline {...}` lines, one `"dpr":2` and one `"dpr":1`, with `"platform":"linux x64"`. copy both lines into the scratch notes.
+Expected: `gh run watch` exits 0 (every existing gate green, the baseline step informational) and two `feel-baseline {...}` lines, one `"dpr":2` and one `"dpr":1`, with `"platform":"linux x64"`. copy both lines into the scratch notes. the step has `continue-on-error`, so a green run with no `feel-baseline` line means the script crashed: read that step's log (`gh run view <databaseId> --log | grep -B2 -A30 'feel-baseline.js'`), fix it, and push again before step 11.
 
-- [ ] **Step 9: the faster linux loop in docker**
+- [ ] **Step 10: the faster linux loop in docker**
 
 docker desktop must list `/Volumes` under settings, resources, file sharing, or the bind mount below comes up empty. confirm that once. then:
 
@@ -622,7 +727,7 @@ docker run --rm -v /Volumes/T7/ghost-signal:/repo -v gs-pw-cache:/root/.cache/ms
 
 Expected: one `feel-baseline {...}` line with `"platform":"linux arm64"` (docker on the m5 is arm64). this loop proves the script and the pages behave on linux; the numbers that decide 8.7 come from ci's x64 runner, never from this container.
 
-- [ ] **Step 10: apply the decision table and record it in the spec**
+- [ ] **Step 11: apply the decision table and record it in the spec**
 
 apply these rules to the two ci lines, in order:
 
@@ -630,7 +735,7 @@ apply these rules to the two ci lines, in order:
 |---|---|---|
 | does "at most 1 of 30 frames misses a vsync" hold on ubuntu | holds at a dpr if `steady.runsWithAtMostOneMiss >= 19` of 20 | `STEADY_MISSES = 1` in `src/feel/playwright.js` (task 6) |
 | which dpr ci runs | dpr 2 if dpr 2 holds the steadiness rule and `frameCpu.over16_7 == 0`; otherwise dpr 1 if dpr 1 holds both; otherwise neither | `CI_DPR = 2` or `CI_DPR = 1` in `src/feel/playwright.js` (task 6) |
-| can compositor drops gate | yes if `drops == 0` at the chosen dpr | `DROPS_GATE = true` or `false` in `src/feel/evaluate.js` (task 4) |
+| can compositor drops gate | yes if `drops == 0` at the chosen dpr | `DROPS_GATE = true` or `false` in `src/feel/evaluate.js` (task 4 step 3 sets it) |
 | the `bad-composite` bits on ubuntu | `inlineSpanCompositeBits` | the bits `test/feel/harness.spec.js` asserts (task 7) |
 
 if neither dpr holds the clean control at joe's numbers, stop here and surface to joe with both json lines: spec open question 8 (self-hosted mac runner, the default, or timing budgets moved to the pre-tag mac run). tasks 2 to 5 are pure node and can continue while joe decides; task 7's ci feel step waits for his pick. never loosen a budget to make the control pass.
@@ -658,7 +763,7 @@ decisions: the steadiness gate stays at 1 of 30. ci runs the feel project at dpr
 drops <gate | stay informational>. `bad-composite.html` asserts bits <bits>.
 ```
 
-- [ ] **Step 11: gates, then commit the results**
+- [ ] **Step 12: gates, then commit the results**
 
 ```bash
 git add docs/superpowers/specs/2026-09-24-ghost-signal-v0.2-design.md
@@ -677,7 +782,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 MSG
 ```
 
-Expected: same gate output as step 7, and the commit lands on `feat/v0.2`.
+Expected: same gate output as step 8, and the commit lands on `feat/v0.2`.
 
 ---
 
@@ -690,9 +795,10 @@ spec 15 step 2, spec 7.5 (trace half), 7.7 (frame, task, composite sources), 7.8
 - Create: `src/feel/trace.js`
 - Create: `test/unit/feel-trace.test.js`
 - Modify: `scripts/feel-baseline.js` (swap its private reader for trace.js)
+- Modify: `ARCHITECTURE.md` (`src/feel/` in the tree)
 
 **Interfaces:**
-- Consumes: `test/unit/fixtures/feel/click-70ms.trace.json` and `composite.trace.json` from task 1, shaped `{ chromium, traceEvents }`. mark names `gs-feel:<run>:<step>:start|end`.
+- Consumes: `test/unit/fixtures/feel/click-70ms.trace.json`, `composite.trace.json` and `reuse.trace.json` from task 1, shaped `{ chromium, traceEvents }`. mark names `gs-feel:<run>:<step>:start|end`.
 - Produces:
   - `errors.js`: `GsFeelConfigError(message)`, `GsFeelUnevaluable(message)`, `GsFeelError(message, report)` with `.report`.
   - `trace.js`: `TRACE_CATEGORIES` (frozen array of the six categories), `COMPOSITE_IGNORED` (`1 << 16`), `summarizeTrace(events)` returning `{ pid, tid, frames: number[] (µs), tasks: [{ ts, dur, tdur }] (µs), children: [{ name, ts, dur, source?, forcedFrom? }], animations: [{ id, nodeName, displayName, compositeFailed, unsupportedProperties, ts }], latencies: [{ type, ts, dur (ms) }], marks: [{ name, ts, startTime }], windows: Map<'run:step', { start, end }> (µs), offsetMs, drops: [{ ts }] }`, and `frameCosts(summary, startUs, endUs)` returning `[{ ts, end, cpu (ms), wall (ms), heavy: [{ name, ms, count, forcedFrom }] }]`. also the building blocks listed in the shared names table.
@@ -714,6 +820,7 @@ import {
 const load = async (name) => JSON.parse(await readFile(new URL(`./fixtures/feel/${name}.trace.json`, import.meta.url), 'utf8')).traceEvents;
 const click = await load('click-70ms');
 const comp = await load('composite');
+const reuse = await load('reuse');
 
 // synthetic events for the shapes a fixture can't hold
 const started = (pid) => ({ name: 'TracingStartedInBrowser', ph: 'I', pid: 99, tid: 1, ts: 0, args: { data: { frames: [{ processId: pid, isOutermostMainFrame: true }] } } });
@@ -768,6 +875,14 @@ test('per-frame cpu sums the thread time of tasks between two BeginMainThreadFra
   assert.deepEqual(costs.map((c) => c.wall), [16.7, 33.3, 10]);
 });
 
+test('a frame lists the children of the tasks it counts, even a task that began before its BeginMainThreadFrame', () => {
+  // the rendering task starts a hair before the BeginMainThreadFrame it emits, so its cpu counts in
+  // the interval before. its children have to follow it there, or the inside: line names the
+  // neighbouring frame's work (the first draft printed the probe's own loop for a 30ms rAF burn)
+  const summary = { frames: [0, 1000, 20000], tasks: [{ ts: 900, dur: 15000, tdur: 15000 }], children: [{ name: 'FunctionCall', ts: 1100, dur: 14000, source: 'x.html:16 burn' }] };
+  assert.deepEqual(frameCosts(summary, 0, 30000).map((c) => [c.cpu, c.heavy.map((h) => h.name)]), [[15, ['FunctionCall x.html:16 burn']], [0, []], [0, []]]);
+});
+
 test('the fixture frame holding the 70ms click costs over 60ms, and the key window has frames', () => {
   const s = summarizeTrace(click);
   const w = s.windows.get('1:0');
@@ -786,12 +901,29 @@ test('compositeFailed: 1056 on the inline span, 8224 on the v0.1 color hover, 0 
   for (const r of results) assert.equal(r.nodeName, r.nodeName.toLowerCase());
 });
 
-test('decodeComposite names bits 5, 10 and 13, numbers the rest, and drops bit 16', () => {
+test('a reused id opens a new record on each begin: one animation per record, bits never merged', () => {
+  // the recorded fixture: chromium handed the span, div a and div b the same id2.local in turn
+  const begins = reuse.filter((e) => e.name === 'Animation' && e.ph === 'b');
+  assert.equal(begins.length, 3);
+  const results = compositeResults(reuse, rendererPid(reuse));
+  assert.equal(results.length, 3);
+  assert.deepEqual(results.map((r) => [r.nodeName.split(' ')[0], r.compositeFailed]), [['span', 1056], ['div', 0], ['div', 0]]);
+  // the same shape built by hand, so the rule holds even on a chromium that stops reusing ids
+  const anim = (ph, ts, data) => ({ name: 'Animation', ph, pid: 1, tid: 9, ts, id2: { local: '0x2b' }, args: { data } });
+  const ev = [
+    anim('b', 10, { nodeName: "DIV class='slot'", displayName: 'transform' }), anim('n', 20, { compositeFailed: 64 }), anim('e', 30, {}),
+    anim('b', 40, { nodeName: "DIV class='motion-view-body'", displayName: '' }), anim('n', 50, { compositeFailed: 0 }), anim('e', 60, {}),
+  ];
+  assert.deepEqual(compositeResults(ev, 1).map((r) => [r.nodeName, r.compositeFailed, r.ts]), [["div class='slot'", 64, 10], ["div class='motion-view-body'", 0, 40]]);
+});
+
+test('decodeComposite names bits 5, 6, 10 and 13, numbers the rest, and drops bit 16', () => {
   assert.deepEqual(decodeComposite(1056), [
     { bit: 5, reason: 'target has invalid compositing state' },
     { bit: 10, reason: 'transform cannot be accelerated on the target' },
   ]);
   assert.deepEqual(decodeComposite(8224).map((r) => r.bit), [5, 13]);
+  assert.match(decodeComposite(64)[0].reason, /another animation on the same property/);
   assert.deepEqual(decodeComposite(1 << 16), []);
   assert.deepEqual(decodeComposite((1 << 3) | (1 << 16)), [{ bit: 3, reason: 'bit 3' }]);
 });
@@ -868,6 +1000,9 @@ export const TRACE_CATEGORIES = Object.freeze([
 // (hidden elements) and isn't a failure to composite anything (spec 7.7)
 const COMPOSITE_REASONS = Object.freeze({
   5: 'target has invalid compositing state',
+  // a web animation outranks a css transition in composite order, and a finished one still counts
+  // until it's cancelled or collected. motion.js cancels on finish for exactly this (plan task 15)
+  6: 'another animation on the same property of this element blocks it (a finished web animation still attached counts)',
   10: 'transform cannot be accelerated on the target',
   13: 'unsupported css property',
 });
@@ -930,24 +1065,29 @@ export function childEvents(events, pid, tid) {
 }
 
 // Animation is an async event: the begin names the target, a later instant carries the verdict.
-// the trace drops a web animation's id, so attribution is by node name and css animation name
+// the trace drops a web animation's id, so attribution is by node name and css animation name.
+// chromium hands an id2.local to the next animation the moment the last one's `e` lands, so a
+// record opens on each `b` and closes on its `e`. keyed on the id alone, one toast slot's bit 6
+// once got pinned on a view body, a tab indicator and eight faces that composited fine XX
 export function compositeResults(events, pid) {
-  const byId = new Map();
-  for (const e of events) {
-    if (e.name !== 'Animation' || e.pid !== pid) continue;
+  const open = new Map();
+  const out = [];
+  for (const e of events.filter((x) => x.name === 'Animation' && x.pid === pid).sort((a, b) => a.ts - b.ts)) {
     const key = e.id2?.local ?? e.id;
-    const rec = byId.get(key) ?? { id: key, nodeName: '', displayName: '', compositeFailed: 0, unsupportedProperties: [], ts: e.ts };
     const data = e.args?.data ?? {};
     if (e.ph === 'b') {
-      rec.nodeName = String(data.nodeName ?? '').toLowerCase();
-      rec.displayName = String(data.displayName ?? '');
-      rec.ts = e.ts;
+      const rec = { id: key, nodeName: String(data.nodeName ?? '').toLowerCase(), displayName: String(data.displayName ?? ''), compositeFailed: 0, unsupportedProperties: [], ts: e.ts };
+      open.set(key, rec);
+      out.push(rec);
+      continue;
     }
+    const rec = open.get(key);
+    if (rec === undefined) continue; // began before the trace did
     if (typeof data.compositeFailed === 'number') rec.compositeFailed |= data.compositeFailed;
     if (Array.isArray(data.unsupportedProperties)) rec.unsupportedProperties.push(...data.unsupportedProperties);
-    byId.set(key, rec);
+    if (e.ph === 'e') open.delete(key);
   }
-  return [...byId.values()];
+  return out;
 }
 
 export function decodeComposite(bits) {
@@ -1045,13 +1185,17 @@ function heaviest(kids) {
 }
 
 // what it cost the main thread to produce each frame inside [start, end]: the thread time of every
-// top-level task that starts between one BeginMainThreadFrame and the next (spec 7.7, frame row)
+// top-level task that starts between one BeginMainThreadFrame and the next (spec 7.7, frame row).
+// the heavy list comes from inside those same tasks, never from the interval's clock range: a task
+// runs past the next BeginMainThreadFrame all the time, and its children go where its cpu went
 export function frameCosts(summary, start, end) {
   const frames = summary.frames.filter((ts) => ts >= start && ts <= end);
   return frames.map((a, i) => {
     const b = frames[i + 1] ?? end;
-    const cpu = summary.tasks.filter((t) => t.ts >= a && t.ts < b).reduce((s, t) => s + t.tdur, 0) / 1000;
-    return { ts: a, end: b, cpu: r1(cpu), wall: r1((b - a) / 1000), heavy: heaviest(summary.children.filter((k) => k.ts >= a && k.ts < b)) };
+    const mine = summary.tasks.filter((t) => t.ts >= a && t.ts < b);
+    const cpu = mine.reduce((s, t) => s + t.tdur, 0) / 1000;
+    const kids = summary.children.filter((k) => mine.some((t) => k.ts >= t.ts && k.ts < t.ts + t.dur));
+    return { ts: a, end: b, cpu: r1(cpu), wall: r1((b - a) / 1000), heavy: heaviest(kids) };
   });
 }
 ```
@@ -1059,7 +1203,7 @@ export function frameCosts(summary, start, end) {
 - [ ] **Step 5: run the tests to see them pass**
 
 Run: `node --test test/unit/feel-trace.test.js`
-Expected: PASS, 12 tests, `ℹ fail 0`.
+Expected: PASS, 14 tests, `ℹ fail 0`.
 
 - [ ] **Step 6: move the baseline script onto trace.js**
 
@@ -1091,10 +1235,14 @@ function analyze(events, startName, endName) {
 Run: `node scripts/feel-baseline.js --runs=2 --dpr=2`
 Expected: exit 0, one `feel-baseline {...}` line with `"cleanCompositeFailures":0` and `"inlineSpanCompositeBits":[1056]`.
 
-- [ ] **Step 7: gates, then commit**
+- [ ] **Step 7: ARCHITECTURE.md**
+
+in `## tree`, under `src/`, add `feel/                   the feel harness, pure node modules first (task 6 adds the probe and the fixture)`, and set the last-updated line to `last updated: <today> (v0.2 in progress, plan task 2)`.
+
+- [ ] **Step 8: gates, then commit**
 
 ```bash
-git add src/feel/errors.js src/feel/trace.js test/unit/feel-trace.test.js scripts/feel-baseline.js
+git add src/feel/errors.js src/feel/trace.js test/unit/feel-trace.test.js scripts/feel-baseline.js ARCHITECTURE.md
 npm run gen && git diff --exit-code
 npm test
 npm run check
@@ -1106,6 +1254,10 @@ the frame and task budgets judge main-thread cpu per frame interval from the tra
 deltas jitter on an idle page and wall time includes the os descheduling the renderer. every
 chromium internal the decoder reads is checked on the way in and fails as unevaluable, so a
 trace format change can never turn into an empty pass.
+chromium reuses an animation's trace id once it ends, so composite results open a record per
+begin event; keyed on the id alone, one element's failure lands on whatever drew the id next.
+a frame's heavy list comes from inside the tasks its cpu counts, so the failure text names the
+callback that burned the frame instead of the one after it.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 MSG
@@ -1420,7 +1572,8 @@ spec 7.6 (windows), 7.7 (every check), 7.8 (the apparatus checks that live on th
   shifts: [{ startTime: 263, value: 0.33, hadRecentInput: false, sources: [{ path: 'section#faces', allowedBy: null, previousRect: { x: 0, y: 76, width: 1100, height: 46 }, currentRect: { x: 0, y: 136, width: 1100, height: 274 } }] }],
   longtasks: [{ startTime: 1834, duration: 73 }],
   loafs: [{ startTime: 1833, duration: 86, scripts: [{ invoker: 'BUTTON#slow.onclick', sourceURL: 'http://127.0.0.1:4173/x.html', sourceFunctionName: 'slowclick', duration: 70 }] }],
-  animations: [{ at: 1841, step: 0, kind: 'web-animation', name: '', id: 'gs-move:enter', target: 'gs-palette#p > div[part="box"]', pseudo: null, properties: ['transform', 'opacity'], easings: ['cubic-bezier(0.16, 1, 0.3, 1)'], iterations: 1, glitch: '1' }],
+  // origin 'before arm': already running when the probe armed. checked for property and family, never an answer
+  animations: [{ at: 1841, step: 0, kind: 'web-animation', name: '', id: 'gs-move:enter', target: 'gs-palette#p > div[part="box"]', pseudo: null, properties: ['transform', 'opacity'], easings: ['cubic-bezier(0.16, 1, 0.3, 1)'], iterations: 1, glitch: '1', origin: 'armed' }],
   overlaps: [{ at: 1850, step: 0, target: 'div#c', pseudo: null, anims: [{ kind: 'web-animation', name: '', id: 'gs-move:slide' }, { kind: 'css-animation', name: 'sn-event-glitch', id: '' }] }],
   calm: [{ at: 1900, what: 'gs-decode played', target: 'gs-decode#wordmark' }],
 }
@@ -1431,14 +1584,17 @@ spec 7.6 (windows), 7.7 (every check), 7.8 (the apparatus checks that live on th
     frame: { worst, over: [{ at, cpu, heavy }] }, input: { name, duration, inputDelay, processing, presentation, scripts } | null,
     task: { worst, over: [{ at, tdur, dur }], scripts }, answer: { latency, what } | null }],
   deterministic: [violation], stalls: [{ step, what }], info: [string], used: { shifts: [selector], answers: [stepIndex] },
-  seen: { animations, shifts, composites } }
+  seen: { animations, shifts, composites },
+  detail: { shifts: [samples shift], animations: [samples animation], answers: [{ step, inputAt, answerAt, what, count }] } }
 // a violation
 { check: 'frame' | 'input' | 'task' | 'answer' | 'silent' | 'settle' | 'shift' | 'property' | 'composite' | 'family' | 'drops' | 'exemption',
   step: { index, name, kind, inputType } | null, limit?, values?: [{ run, value }], runs: [runIndex], data: {...} }
 // combineRuns(budgets, evaluatedRuns, meta) returns the report
 { version: 1, scenario, matrix, mode, env, budgets, runsPlanned, runsDone, exemptions: [{ kind, target, why, used }],
-  runs: [{ index, steps, seen, info }], violations, unconfirmed: [{ check, step, limit, values }], stalls: [{ step, what, run }],
+  runs: [{ index, steps, seen, info, detail }], violations, unconfirmed: [{ check, step, limit, values }], stalls: [{ step, what, run }],
   result: 'pass' | 'fail' }
+// an unevaluable scenario never reaches combineRuns: the fixture writes { version, scenario, matrix,
+// mode, result: 'unevaluable', reason } as the json attachment instead (task 6)
 ```
 
 `meta` is `{ scenario, matrix, mode, env, runsPlanned, allowShift: [{ selector, why }] }`. `env` is `{ chromium, headlessShell, platform, viewport: { width, height }, dpr, interval, calibration, steady }`.
@@ -1458,7 +1614,10 @@ const B = loadBudgets();
 
 // a run where step i spans [1000(i + 1), 1000(i + 1) + 500] ms and the trace clock is
 // performance.now() in microseconds, so offsetMs is 0
-function build({ index = 1, steps = [{}], shifts = [], animations = [], overlaps = [], calm = [], events = [], loafs = [], composites = [], fcp = 50, drops = [] } = {}) {
+// a run whose probe saw animations gets one clean composite record by default, the way a real trace
+// always carries an Animation event per animation. the composite apparatus test passes [] on purpose
+const cleanComposite = { id: '0x1', nodeName: 'div', displayName: '', compositeFailed: 0, unsupportedProperties: [], ts: 1_100_000 };
+function build({ index = 1, steps = [{}], shifts = [], animations = [], overlaps = [], calm = [], events = [], loafs = [], composites = animations.length > 0 ? [cleanComposite] : [], fcp = 50, drops = [] } = {}) {
   const sampleSteps = steps.map((st, i) => {
     const start = 1000 * (i + 1);
     const kind = st.kind ?? 'event';
@@ -1496,7 +1655,7 @@ function build({ index = 1, steps = [{}], shifts = [], animations = [], overlaps
 const meta = (extra = {}) => ({ scenario: 'unit', matrix: 'm', mode: 'motion', env: {}, runsPlanned: 3, allowShift: [], ...extra });
 const fold = (runs, { mode = 'motion', ...extra } = {}) => combineRuns(B, runs.map((r) => evaluateRun(B, r, { mode })), meta({ mode, ...extra }));
 const checks = (report) => report.violations.map((v) => v.check).sort();
-const anim = (o) => ({ at: 1100, step: 0, kind: 'css-animation', name: 'gs-event-x', id: '', target: 'div#a', pseudo: null, properties: ['transform'], easings: ['steps(3)'], iterations: 1, glitch: '1', ...o });
+const anim = (o) => ({ at: 1100, step: 0, kind: 'css-animation', name: 'gs-event-x', id: '', target: 'div#a', pseudo: null, properties: ['transform'], easings: ['steps(3)'], iterations: 1, glitch: '1', origin: 'armed', ...o });
 const shift = (o) => ({ startTime: 1100, value: 0.01, hadRecentInput: false, sources: [{ path: 'div#list', allowedBy: null, previousRect: { x: 0, y: 0 }, currentRect: { x: 0, y: 28 } }], ...o });
 
 test('a clean run passes and says so', () => {
@@ -1505,6 +1664,9 @@ test('a clean run passes and says so', () => {
   assert.deepEqual(report.violations, []);
   assert.deepEqual(report.unconfirmed, []);
   assert.equal(report.runsDone, 2);
+  // spec 7.9: the json keeps what each run saw, not only counts
+  assert.deepEqual(Object.keys(report.runs[0].detail).sort(), ['animations', 'answers', 'shifts']);
+  assert.deepEqual(report.runs[0].detail.answers.map((a) => [a.step, a.what]), [[0, 'mutation']]);
 });
 
 test('a 30ms frame in both runs fails the frame check with both values', () => {
@@ -1649,6 +1811,14 @@ test('compositor drops gate only when the baseline said so', () => {
   else assert.match(report.runs[0].info.join('\n'), /1 compositor frames dropped/);
 });
 
+test('composite apparatus: animations started while armed and no Animation event in the trace is unevaluable', () => {
+  const armed = build({ animations: [anim({})], composites: [] });
+  assert.throws(() => evaluateRun(B, armed, { mode: 'motion' }), (e) => e instanceof GsFeelUnevaluable && /no Animation event/.test(e.message));
+  // only animations that were already running when the probe armed: their trace events predate the trace
+  const before = build({ animations: [anim({ origin: 'before arm' })], composites: [] });
+  assert.equal(evaluateRun(B, before, { mode: 'motion' }).deterministic.length, 0);
+});
+
 test('apparatus: zero frames, an untrusted input, or counts that never grew are unevaluable', () => {
   const unevaluable = (run, pattern) => assert.throws(() => evaluateRun(B, run, { mode: 'motion' }), (e) => e instanceof GsFeelUnevaluable && pattern.test(e.message));
   unevaluable(build({ steps: [{ frames: [] }] }), /zero animation frames/);
@@ -1676,7 +1846,8 @@ import { frameCosts, decodeComposite, COMPOSITE_IGNORED } from './trace.js';
 
 export const REPORT_VERSION = 1;
 export const TIMING_CHECKS = Object.freeze(['frame', 'input', 'task', 'answer']);
-// spec 8.7 decides this one: compositor drops gate only if the ubuntu clean control showed none
+// spec 8.7 decides this one: compositor drops gate only if the ubuntu clean control showed none.
+// false is the placeholder until task 1 step 11 has the ubuntu numbers; step 3 below sets it
 export const DROPS_GATE = false;
 
 const LOAD = Object.freeze({ index: null, name: 'load', kind: 'load', inputType: null });
@@ -1864,6 +2035,13 @@ function judgeAnimations(budgets, samples, mode, out) {
 }
 
 function judgeComposites(samples, trace, out) {
+  // the composite check's own apparatus check: without it a trace that lost blink.animations reads
+  // as "all composited". animations already running at arm began before the trace did, so they
+  // can't be asked to show up in it
+  const fresh = samples.animations.filter((a) => a.origin !== 'before arm').length;
+  if (fresh > 0 && trace.animations.length === 0) {
+    throw new GsFeelUnevaluable(`the probe saw ${fresh} animations start while armed and the trace holds no Animation event. the blink.animations category is missing or its format moved, so the composite check measured nothing`);
+  }
   for (const a of trace.animations) {
     const bits = a.compositeFailed & ~COMPOSITE_IGNORED;
     if (bits === 0) continue;
@@ -1889,6 +2067,13 @@ export function evaluateRun(budgets, run, { mode = 'motion' } = {}) {
     info: out.info,
     used: { shifts: [...out.used.shifts], answers: [...out.used.answers] },
     seen: { animations: run.samples.animations.length, shifts: run.samples.shifts.length, composites: run.trace.animations.length },
+    // spec 7.9: the json report keeps each run's shifts, animations and answers, so a pattern across
+    // runs is readable after the fact
+    detail: {
+      shifts: run.samples.shifts,
+      animations: run.samples.animations,
+      answers: run.samples.steps.filter((s) => s.kind === 'input').map((s) => ({ step: s.index, inputAt: s.inputAt, answerAt: s.answerAt, what: s.answerWhat, count: s.answerCount })),
+    },
   };
 }
 
@@ -1989,7 +2174,7 @@ export function combineRuns(budgets, runs, meta) {
     runsPlanned: meta.runsPlanned,
     runsDone: runs.length,
     exemptions,
-    runs: runs.map((r) => ({ index: r.index, steps: r.steps, seen: r.seen, info: r.info })),
+    runs: runs.map((r) => ({ index: r.index, steps: r.steps, seen: r.seen, info: r.info, detail: r.detail })),
     violations,
     unconfirmed,
     stalls: runs.flatMap((r) => r.stalls.map((s) => ({ ...s, run: r.index }))),
@@ -1998,10 +2183,12 @@ export function combineRuns(budgets, runs, meta) {
 }
 ```
 
+then set `DROPS_GATE` from spec 8.7 (task 1 step 11): `export const DROPS_GATE = true;` when the ubuntu clean control showed zero compositor drops at the ci dpr, otherwise leave it `false`. the drops test reads the constant, so it passes either way; the value is what changes ci.
+
 - [ ] **Step 4: run the tests to see them pass**
 
 Run: `node --test test/unit/feel-evaluate.test.js`
-Expected: PASS, 20 tests, `ℹ fail 0`. if the stall test prints a gap other than `43.3ms`, the frames array in the builder was changed; the gap between `16.7` and `60` is `43.3`.
+Expected: PASS, 21 tests, `ℹ fail 0`. if the stall test prints a gap other than `43.3ms`, the frames array in the builder was changed; the gap between `16.7` and `60` is `43.3`.
 
 - [ ] **Step 5: gates, then commit**
 
@@ -2307,18 +2494,20 @@ spec 15 step 3 (first half), 7.1 to 7.6, 7.8, 8.1 to 8.3, 10 (scripts and config
 - Create: `src/feel/probe.js`
 - Create: `src/feel/playwright.js`
 - Create: `src/feel/index.js`
-- Create: `test/unit/feel-probe.test.js`
+- Create: `test/unit/feel-probe.test.js`, `test/unit/feel-index.test.js`
 - Create: `test/feel/pages/untrusted.html`
 - Create: `test/feel/harness.spec.js`
 - Modify: `playwright.config.js` (the feel project)
 - Modify: `package.json` (`e2e` and `feel` scripts)
+- Modify: `ARCHITECTURE.md` (the feel project, `src/feel/` in full, commands)
 
 **Interfaces:**
 - Consumes: everything from tasks 2 to 5. the samples shape from task 4 is what `window.__gsFeel.disarm()` must return, field for field.
 - Produces:
-  - `window.__gsFeel` in the page: `apparatus()`, `ready(timeoutMs?)`, `mountWarmup()`, `unmountWarmup()`, `steady(n, factor)` resolving `{ interval, misses, deltas }`, `calibrate()` returning ms, `arm({ run, allowShift, mode })`, `stepStart({ index, name, kind, answer, why })`, `stepEnd(timeoutMs)` resolving `{ index, settled }`, `disarm()` returning samples, `plant()`, `unplant()`.
+  - `window.__gsFeel` in the page: `apparatus()` returning `{ version, entryTypes, visibility, reducedMotion, glitch }`, `ready(timeoutMs?)`, `mountWarmup()`, `unmountWarmup()`, `steady(n, factor)` resolving `{ interval, misses, deltas }`, `calibrate()` returning ms, `arm({ run, allowShift, mode })` returning the same snapshot as `apparatus()` taken at arm time, `stepStart({ index, name, kind, answer, why })`, `stepEnd(timeoutMs)` resolving `{ index, settled }`, `disarm()` returning samples, `plant()`, `unplant()`.
   - `src/feel/playwright.js`: `FEEL_PROFILES.m5` and `.ci`, `STEADY_MISSES`, `feelUse`, `feelProject(overrides)`, `feelFixture({ budgets })`, `withFeel(test, { budgets })`. the `feel` fixture: `feel.scenario(name, { matrix, setup(m), steps(s, m), budgets })` resolving the reports array or throwing `GsFeelError` / `GsFeelUnevaluable`; `s.input(name, fn, { answer, why, settleTimeout })`, `s.event(...)`, `s.scroll(...)`, `s.idle(name, ms)`; `feel.allowShift(selector, why)`; `await feel.measure({ mode })` resolving `{ stop() }`; `feel.selfTest()` resolving `{ seen: string[] }` (task 7 exercises it); `feel.budgets`; `feel.runs`.
-  - report attachments `feel-<scenario>-<matrix>.txt`, `.json`, and `-run<n>.trace.json` for runs with a violation, written under `testInfo.outputPath()` (so under `test-results/`).
+  - report attachments `feel-<scenario>-<matrix>.txt`, `.json`, and `-run<n>.trace.json` for runs with a violation, written under `testInfo.outputPath()` (so under `test-results/`). an unevaluable scenario attaches the `.txt` and a `.json` with `result: 'unevaluable'` and the reason.
+  - apparatus checks run twice per run, after `setup` and at arm time: chromium, the four entry types, `visible`, reduced motion under `still`, `data-glitch="0"` under `calm`, and the page's `data-glitch` equal to the matrix entry's `glitch` key when it has one.
 
 - [ ] **Step 1: write the failing unit test for the probe module**
 
@@ -2513,7 +2702,10 @@ export function installProbe() {
     if (typeof CSSTransition !== 'undefined' && a instanceof CSSTransition) return { kind: 'css-transition', name: a.transitionProperty, id: '' };
     return { kind: 'web-animation', name: '', id: typeof a.id === 'string' ? a.id : '' };
   };
-  const record = (a) => {
+  // answers: false is the arm-time seed. those animations ran before any step's input, so they're
+  // checked for property and family and never count as an answer. the sweep can also find an
+  // animation a frame late, so one that began before the input never answers it either
+  const record = (a, { answers = true, origin = 'armed' } = {}) => {
     if (state.armed === false || state.seen.has(a)) return;
     state.seen.add(a);
     const target = a.effect?.target ?? null;
@@ -2522,9 +2714,13 @@ export function installProbe() {
       at: now(), step: state.step === null ? null : state.step.index, ...describe(a),
       target: cssPath(target), pseudo: a.effect?.pseudoElement ?? null,
       properties: p.properties, easings: p.easings, iterations: p.iterations,
-      glitch: document.documentElement?.dataset.glitch ?? null,
+      glitch: document.documentElement?.dataset.glitch ?? null, origin,
     });
-    if (ambientTarget(elementOf(target)) === false) answered('animation');
+    if (answers === false || ambientTarget(elementOf(target))) return;
+    const s = state.step;
+    const began = typeof a.startTime === 'number' ? a.startTime : now();
+    if (s !== null && s.inputAt !== null && began < s.inputAt) return;
+    answered('animation');
   };
   const original = Element.prototype.animate;
   Element.prototype.animate = function animate(...args) {
@@ -2542,7 +2738,7 @@ export function installProbe() {
     state.animations.push({
       at: now(), step: state.step === null ? null : state.step.index, kind: 'css-transition', name: e.propertyName, id: '',
       target: cssPath(e.target), pseudo, properties: [e.propertyName], easings: easing === 'linear' ? [] : [easing], iterations: 1,
-      glitch: document.documentElement?.dataset.glitch ?? null,
+      glitch: document.documentElement?.dataset.glitch ?? null, origin: 'armed',
     });
     answered('animation');
   }, { capture: true });
@@ -2602,6 +2798,7 @@ export function installProbe() {
         entryTypes: [...PerformanceObserver.supportedEntryTypes],
         visibility: document.visibilityState,
         reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+        glitch: document.documentElement?.dataset.glitch ?? null,
       };
     },
     async ready(timeout = 5000) {
@@ -2657,6 +2854,12 @@ export function installProbe() {
         animations: [], overlaps: [], overlapKeys: new Set(), calm: [], seen: new WeakSet(), lastMutation: 0,
       });
       state.shifts.forEach((rec, i) => matchAllow(rec, state.shiftNodes[i]));
+      // what already runs gets recorded now, for the property and family checks, and can never be
+      // an answer: a scroll edge or an infinite loop would otherwise answer the first step's input
+      for (const a of document.getAnimations()) record(a, { answers: false, origin: 'before arm' });
+      // node re-checks visibility, reduced motion and the glitch level on this snapshot (spec 8.2:
+      // the probe checks visibility when arming)
+      return window.__gsFeel.apparatus();
     },
     stepStart({ index, name, kind, answer, why }) {
       performance.mark(`gs-feel:${state.run}:${index}:start`);
@@ -2742,13 +2945,16 @@ import { installProbe, PROBE_VERSION } from './probe.js';
 import { TRACE_CATEGORIES, summarizeTrace } from './trace.js';
 import { loadBudgets, mergeBudgets } from './budgets.js';
 import { GsFeelConfigError, GsFeelUnevaluable, GsFeelError } from './errors.js';
-import { evaluateRun, needsThirdRun, combineRuns } from './evaluate.js';
+import { evaluateRun, needsThirdRun, combineRuns, REPORT_VERSION } from './evaluate.js';
 import { formatReport } from './format.js';
 
 // spec 8.7: at most this many of 30 idle frames may miss a vsync before a run is unevaluable
 export const STEADY_MISSES = 1;
 // spec 8.7: the dpr ci runs the feel project at. joe's strict mac runs stay at the m5's 2
 const CI_DPR = 2;
+// chrome keeps hadRecentInput true for 500ms after a discrete input (spec 7.7), and the warm-up's
+// Shift is one. arming waits it out, so a shift in the first step is the app's, never the warm-up's
+const INPUT_QUIET_MS = 600;
 
 export const FEEL_PROFILES = Object.freeze({
   m5: Object.freeze({ viewport: Object.freeze({ width: 1470, height: 956 }), deviceScaleFactor: 2, hz: 60 }),
@@ -2793,14 +2999,26 @@ async function startTrace(page) {
   };
 }
 
-async function apparatus(page, mode) {
-  const a = await page.evaluate(() => (window.__gsFeel === undefined ? null : window.__gsFeel.apparatus()));
+// the page's apparatus snapshot, judged here. it runs after setup and again on what arm() returns,
+// so a page that drifts between the two is caught where the measuring starts (spec 7.8, 8.2) XX
+function judgeApparatus(a, mode, m) {
   if (a === null) throw new GsFeelUnevaluable('window.__gsFeel is missing. the page was created before the feel fixture ran, or navigation reached a context the init script never saw');
   if (a.version !== PROBE_VERSION) throw new GsFeelUnevaluable(`probe version ${a.version} in the page, ${PROBE_VERSION} in node. two ghost signal copies are loaded`);
   const missing = ['event', 'layout-shift', 'longtask', 'long-animation-frame'].filter((t) => a.entryTypes.includes(t) === false);
   if (missing.length > 0) throw new GsFeelUnevaluable(`this browser has no ${missing.join(', ')} performance entries`);
   if (a.visibility !== 'visible') throw new GsFeelUnevaluable(`the page is ${a.visibility}. a hidden page throttles its timers and frames`);
   if (mode === 'still' && a.reducedMotion !== true) throw new GsFeelUnevaluable("mode 'still' but prefers-reduced-motion: reduce does not match. set media: { reducedMotion: 'reduce' } on the matrix entry");
+  // calm judges signal at glitch 0. on a page at glitch 1 its rules pass on nothing
+  if (mode === 'calm' && a.glitch !== '0') throw new GsFeelUnevaluable(`mode 'calm' but the page is at data-glitch="${a.glitch ?? ''}". setup has to land the page at glitch 0; the fixture never sets it`);
+  if (m?.glitch !== undefined && a.glitch !== String(m.glitch)) throw new GsFeelUnevaluable(`matrix entry "${m.name}" says glitch ${m.glitch}, the page is at data-glitch="${a.glitch ?? ''}". setup has to land the page there`);
+}
+
+async function apparatus(page, mode, m) {
+  judgeApparatus(await page.evaluate(() => (window.__gsFeel === undefined ? null : window.__gsFeel.apparatus())), mode, m);
+}
+
+async function armProbe(page, cfg, m) {
+  judgeApparatus(await page.evaluate((c) => window.__gsFeel.arm(c), cfg), cfg.mode, m);
 }
 
 // the first input of a cold page pays setup costs (spec p4). pay them on a 1x1 corner element the
@@ -2886,17 +3104,20 @@ async function runOnce(ctx, index, measured) {
     colorScheme: m.media?.colorScheme ?? (m.theme === 'light' ? 'light' : 'dark'),
   });
   await ctx.setup(m);
-  await apparatus(page, ctx.mode);
+  await apparatus(page, ctx.mode, m);
   try {
     await page.evaluate(() => window.__gsFeel.ready());
   } catch (err) {
     throw new GsFeelUnevaluable(`the page never settled before arming: ${err.message}`);
   }
   await warmUp(page);
+  const warmedAt = Date.now();
   const steadyResult = await steady(page, budgets);
   const calibration = await page.evaluate(() => window.__gsFeel.calibrate());
   const tracer = measured ? await startTrace(page) : null;
-  await page.evaluate((cfg) => window.__gsFeel.arm(cfg), { run: index, allowShift: ctx.allowShift, mode: ctx.mode });
+  const quiet = INPUT_QUIET_MS - (Date.now() - warmedAt);
+  if (quiet > 0) await page.waitForTimeout(quiet);
+  await armProbe(page, { run: index, allowShift: ctx.allowShift, mode: ctx.mode }, m);
   await drive(ctx, page);
   const samples = await page.evaluate(() => window.__gsFeel.disarm());
   if (tracer === null) return null;
@@ -2936,7 +3157,11 @@ function createFeel(page, testInfo, base) {
           await attach(testInfo, report, runs);
         } catch (err) {
           if (err instanceof GsFeelUnevaluable) {
-            await writeAttachment(testInfo, `feel-${slug(name)}-${slug(m.name)}.txt`, `feel: ${name} / ${m.name} unevaluable. ${err.message}\n`, 'text/plain');
+            // spec 7.9: an unevaluable run is a result too, in the same two files a pass or a fail gets
+            const base = `feel-${slug(name)}-${slug(m.name)}`;
+            await writeAttachment(testInfo, `${base}.txt`, `feel: ${name} / ${m.name} unevaluable. ${err.message}\n`, 'text/plain');
+            const json = { version: REPORT_VERSION, scenario: name, matrix: m.name, mode: ctx.mode, result: 'unevaluable', reason: err.message };
+            await writeAttachment(testInfo, `${base}.json`, `${JSON.stringify(json, null, 2)}\n`, 'application/json');
           }
           throw err;
         }
@@ -2948,9 +3173,9 @@ function createFeel(page, testInfo, base) {
     // one unrepeated window inside a functional spec. deterministic checks only, so a functional
     // spec picks up shifts, properties, composites and families without becoming a timing test
     async measure({ mode = 'motion' } = {}) {
-      await apparatus(page, mode);
+      await apparatus(page, mode, null);
       const tracer = await startTrace(page);
-      await page.evaluate((cfg) => window.__gsFeel.arm(cfg), { run: 0, allowShift: [...allowShift], mode });
+      await armProbe(page, { run: 0, allowShift: [...allowShift], mode }, null);
       await page.evaluate(() => window.__gsFeel.stepStart({ index: 0, name: 'measure', kind: 'event', answer: true, why: null }));
       return {
         async stop() {
@@ -2966,10 +3191,10 @@ function createFeel(page, testInfo, base) {
       };
     },
     async selfTest() {
-      await apparatus(page, 'motion');
+      await apparatus(page, 'motion', null);
       await page.evaluate(() => window.__gsFeel.plant());
       const tracer = await startTrace(page);
-      await page.evaluate((cfg) => window.__gsFeel.arm(cfg), { run: 0, allowShift: [], mode: 'motion' });
+      await armProbe(page, { run: 0, allowShift: [], mode: 'motion' }, null);
       let samples;
       try {
         await page.evaluate(() => window.__gsFeel.stepStart({ index: 0, name: 'planted click', kind: 'input', answer: true, why: null }));
@@ -3027,7 +3252,35 @@ export * from './evaluate.js';
 export * from './format.js';
 ```
 
-`budgets.js` re-exports the error classes that `errors.js` also exports; `export *` of the same binding through two paths is fine in es modules because both resolve to the same `errors.js` binding.
+`budgets.js` re-exports the error classes that `errors.js` also exports; `export *` of the same binding through two paths is fine in es modules because both resolve to the same `errors.js` binding. two star exports that name *different* bindings are not fine: es modules drop the name from the namespace without an error. `test/unit/feel-index.test.js` is the check:
+
+```js
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import * as feel from '../../src/feel/index.js';
+import * as errors from '../../src/feel/errors.js';
+
+// a clash between two star exports silently removes the name, so every public pure name is looked
+// up here. nothing else in the suite imports index.js
+test('index.js re-exports every pure name, unambiguous', () => {
+  for (const name of [
+    'GsFeelConfigError', 'GsFeelUnevaluable', 'GsFeelError',
+    'parseDuration', 'loadBudgets', 'mergeBudgets', 'isVsyncMiss', 'worstInteraction', 'isUnpromptedShift', 'animatedProperties', 'familyOf', 'isStepped', 'BOOKKEEPING_KEYS',
+    'TRACE_CATEGORIES', 'COMPOSITE_IGNORED', 'rendererPid', 'compositeResults', 'decodeComposite', 'summarizeTrace', 'frameCosts',
+    'REPORT_VERSION', 'TIMING_CHECKS', 'DROPS_GATE', 'evaluateRun', 'needsThirdRun', 'combineRuns',
+    'formatReport',
+  ]) assert.ok(name in feel, `${name} is missing from src/feel/index.js`);
+  assert.equal(feel.GsFeelUnevaluable, errors.GsFeelUnevaluable);
+});
+
+test('index.js pulls in no page code and no playwright fixture', () => {
+  assert.equal('installProbe' in feel, false);
+  assert.equal('withFeel' in feel, false);
+});
+```
+
+Run: `node --test test/unit/feel-index.test.js`
+Expected: PASS, 2 tests.
 
 - [ ] **Step 5: wire the feel project and narrow e2e**
 
@@ -3114,6 +3367,9 @@ test('the clean control passes every check, steady, and every step settles', asy
     setup: async () => { await page.goto(url('clean')); },
     steps: async (s) => {
       await s.input('toggle', () => page.locator('#toggle').click());
+      // spec p5: a fast key press may get no event timing entry at all. the step is evaluable anyway,
+      // through the probe's trusted keydown and eventCounts, and an apparatus gap here would throw
+      await s.input('press t', () => page.keyboard.press('t'));
       await s.event('flip insert', () => page.evaluate(() => window.cleanInsert()));
       await s.event('toast burst', () => page.evaluate(() => window.cleanToasts(5)));
       await s.scroll('scroll the scroller', async () => {
@@ -3127,7 +3383,19 @@ test('the clean control passes every check, steady, and every step settles', asy
   expect(report.violations).toEqual([]);
   for (const run of report.runs) for (const step of run.steps) expect(step.settled, `${step.name} settled`).toBe(true);
   expect(report.runs[0].seen.animations, 'the positive control: the harness saw the flip and the toasts').toBeGreaterThan(0);
+  expect(report.runs[0].detail.answers.map((a) => a.what).every((w) => w !== null), 'both input steps were answered').toBe(true);
   expect(report.env.dpr, 'the page ran at the profile dpr').toBe(feelUse.deviceScaleFactor);
+});
+
+test('feel.measure() judges one window inside a functional spec: the clean insert passes', async ({ page, feel }) => {
+  test.setTimeout(60_000);
+  await page.goto(url('clean'));
+  await page.evaluate(() => window.__gsFeel.ready());
+  const m = await feel.measure();
+  await page.evaluate(() => window.cleanInsert());
+  const report = await m.stop();
+  expect(report.result).toBe('pass');
+  expect(report.runs[0].seen.animations, 'the positive control: measure saw the flip').toBeGreaterThan(0);
 });
 
 test('an input step driven by evaluate is unevaluable, never a pass', async ({ page, feel }) => {
@@ -3144,15 +3412,19 @@ test('an input step driven by evaluate is unevaluable, never a pass', async ({ p
 - [ ] **Step 7: run the feel project**
 
 Run: `npm run feel`
-Expected: `2 passed`. if the clean control fails, read the attached `test-results/**/feel-clean-default.txt`: a violation on the clean page is a harness bug (or a clean-page bug), and it gets fixed in the harness or the page, never by loosening a budget. if it fails as `runner unsteady` on the mac, close other heavy apps and rerun before touching code.
+Expected: `3 passed`. if the clean control fails, read the attached `test-results/**/feel-clean-default.txt`: a violation on the clean page is a harness bug (or a clean-page bug), and it gets fixed in the harness or the page, never by loosening a budget. if it fails as `runner unsteady` on the mac, close other heavy apps and rerun before touching code.
 
 Run: `npm run e2e`
 Expected: the same count as before this task, all passed, and no file from `test/feel/` in the list.
 
-- [ ] **Step 8: gates, then commit**
+- [ ] **Step 8: ARCHITECTURE.md**
+
+in `## tree`, replace the task 2 `feel/` line with `feel/                   probe.js (in-page recorder) playwright.js (the fixture) trace.js budgets.js evaluate.js format.js errors.js index.js`, and add `test/feel                playwright feel project: harness.spec.js, pages/` after the `test/e2e` line. in `## stack`, the tests row becomes `` | tests | `node:test` + `@playwright/test` (chromium) against `scripts/serve.js`; the `feel` project runs alone | contrast, determinism, reduced motion, plug-in probe, feel budgets | ``. in `## commands`, change `npm run e2e` to `npm run e2e   # the chromium project only` and add `npm run feel` and `GS_FEEL_RUNS=1 npm run feel`. last-updated line: `(v0.2 in progress, plan task 6)`.
+
+- [ ] **Step 9: gates, then commit**
 
 ```bash
-git add src/feel/probe.js src/feel/playwright.js src/feel/index.js test/unit/feel-probe.test.js test/feel/pages/untrusted.html test/feel/harness.spec.js playwright.config.js package.json
+git add src/feel/probe.js src/feel/playwright.js src/feel/index.js test/unit/feel-probe.test.js test/unit/feel-index.test.js test/feel/pages/untrusted.html test/feel/harness.spec.js playwright.config.js package.json ARCHITECTURE.md
 npm run gen && git diff --exit-code
 npm test
 npm run check
@@ -3171,7 +3443,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 MSG
 ```
 
-Expected: gen diff empty, `ℹ fail 0`, `contrast ok`, e2e all passed, feel `2 passed`.
+Expected: gen diff empty, `ℹ fail 0`, `contrast ok`, e2e all passed, feel `3 passed`.
 
 ---
 
@@ -3180,9 +3452,10 @@ Expected: gen diff empty, `ℹ fail 0`, `contrast ok`, e2e all passed, feel `2 p
 spec 15 step 3 (second half), 9.4, 10 (ci), 8.7 (the bits `bad-composite` asserts). the harness goes green on every control, then runs once against the untouched gallery from scratch so the violations tasks start from a measured list.
 
 **Files:**
-- Create: `test/feel/pages/transform-no-shift.html`, `bad-frame.html`, `bad-input.html`, `bad-key.html`, `bad-task.html`, `bad-shift.html`, `bad-property.html`, `bad-composite.html`, `bad-family.html`, `bad-silent.html`
-- Modify: `test/feel/harness.spec.js` (negatives, the self test, transform-no-shift)
+- Create: `test/feel/pages/transform-no-shift.html`, `bad-frame.html`, `bad-input.html`, `bad-key.html`, `bad-task.html`, `bad-shift.html`, `bad-property.html`, `bad-composite.html`, `bad-overlap.html`, `bad-family.html`, `bad-silent.html`
+- Modify: `test/feel/harness.spec.js` (negatives, the self test, transform-no-shift, measure and calm apparatus controls)
 - Modify: `.github/workflows/ci.yml` (feel step, report artifact, trimmed baseline)
+- Modify: `ARCHITECTURE.md` (ci steps and the ci row)
 - Scratch only: `.superpowers/sdd/2026-09-24-ghost-signal-v0.2/gallery-red/playwright.config.js`, `gallery-red.feel.js`, output `gallery-red.txt`
 
 **Interfaces:**
@@ -3380,17 +3653,30 @@ every page shares the same head, differing only in title and body. each one plan
     #box { position: relative; width: 80px; height: 24px; background: #151517; }
     #tint { width: 80px; height: 24px; background-color: #151517; transition: background-color 200ms ease-out; }
     #tint.on { background-color: #ad2a23; }
+    /* spec p20: a 0ms transition creates no Animation object, which the inert --gs-motion-hover
+       (task 8) relies on. it changes in the same step and must never show up in a violation */
+    #zero { width: 80px; height: 24px; background-color: #151517; transition: background-color 0ms ease-out; }
+    #zero.on { background-color: #ad2a23; }
+    /* spec p14: an animation on a pseudo element never shows in target.getAnimations(), only with
+       { subtree: true }. the probe has to find this one and name its ::after */
+    #pseudo { position: relative; width: 80px; height: 24px; }
+    #pseudo.on::after { content: ""; position: absolute; top: 0; left: 0; width: 8px; height: 24px; background: #ad2a23; animation: sn-spatial-pseudo-left 200ms linear 1; }
+    @keyframes sn-spatial-pseudo-left { from { left: 0; } to { left: 40px; } }
   </style>
 </head>
 <body>
   <p>planted: a left animation and a background-color transition</p>
   <div id="box"></div>
   <div id="tint"></div>
+  <div id="zero"></div>
+  <div id="pseudo"></div>
   <script>
     // planted: a left animation and a background-color transition. neither is transform or opacity
     window.paint = () => {
       document.getElementById('box').animate([{ left: '0px' }, { left: '100px' }], { duration: 200, id: 'gs-move:left' });
       document.getElementById('tint').classList.add('on');
+      document.getElementById('zero').classList.add('on');
+      document.getElementById('pseudo').classList.add('on');
     };
   </script>
 </body>
@@ -3413,6 +3699,39 @@ every page shares the same head, differing only in title and body. each one plan
     // planted: transform on an inline box. it passes the property check and still can't run on the
     // compositor, which is what the composite check exists for (spec 7.7)
     window.slideInline = () => document.getElementById('inl').animate([{ transform: 'translateX(0)' }, { transform: 'translateX(40px)' }], { duration: 200, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', id: 'gs-move:inline' });
+  </script>
+</body>
+</html>
+```
+
+`test/feel/pages/bad-overlap.html` (the toast pattern the gallery dry run hit, with no ghost signal code in it):
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: bad overlap</title>
+  <style>
+    body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }
+    .box { width: 120px; height: 24px; margin: 8px 0; background: #1b1f22; transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1); }
+  </style>
+</head>
+<body>
+  <p>planted: a finished enter still attached, then a restack transition</p>
+  <div class="box" id="held">held</div>
+  <script>
+    // planted: an enter animation that finished (fill none) and is still referenced, then a css
+    // transition on the same element's transform. a web animation outranks a transition in
+    // composite order even when finished, so chromium runs the transition on the main thread
+    // (bit 6). the gallery's toast slots did exactly this until motion.js cancelled on finish
+    window.kept = [];
+    window.heldEnter = () => {
+      const a = document.getElementById('held').animate([{ transform: 'translateX(24px)', opacity: 0 }, { transform: 'translateX(0px)', opacity: 1 }], { duration: 100, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', id: 'gs-move:enter' });
+      window.kept.push(a);
+      return a.finished.then(() => {});
+    };
+    window.restack = () => { document.getElementById('held').style.transform = 'translateY(-32px)'; };
   </script>
 </body>
 </html>
@@ -3479,6 +3798,7 @@ every page shares the same head, differing only in title and body. each one plan
   <span class="btn" role="button" id="dead">dead</span>
   <span class="btn" role="button" id="tick">tick</span>
   <gs-wallpaper id="wp" data-step="0"></gs-wallpaper>
+  <gs-wallpaper id="bg" data-step="0"></gs-wallpaper>
   <script>
     // planted: one control that does nothing, and one whose only change is a wallpaper tick, which
     // is ambient and never counts as an answer
@@ -3486,6 +3806,11 @@ every page shares the same head, differing only in title and body. each one plan
       const wp = document.getElementById('wp');
       wp.dataset.step = String(Number(wp.dataset.step) + 1);
     });
+    // and a second wallpaper stepping on its own every 40ms the whole time (spec 9.2: ambient
+    // mutations are excluded from settling). if they held steps open, every step here would end as
+    // "never settled" instead of settling as silent
+    const bg = document.getElementById('bg');
+    setInterval(() => { bg.dataset.step = String((Number(bg.dataset.step) + 1) % 4); }, 40);
   </script>
 </body>
 </html>
@@ -3526,10 +3851,12 @@ test('transform moves and flip inserts register no layout shift at all', async (
 
 test('bad-frame: ten 30ms frames fail the frame check and name the callback', async ({ page, feel }) => {
   test.setTimeout(90_000);
-  const err = await failing(feel.scenario('bad-frame', one(page, 'bad-frame', 'burn ten frames', () => page.evaluate(() => window.burnFrames(10)))));
-  expect(fired(err)).toContain('frame@burn ten frames');
-  expect(fired(err)).not.toContain('task@burn ten frames');
-  expect(err.message).toContain('burn');
+  const err = await failing(feel.scenario('bad-frame', one(page, 'bad-frame', 'ten slow frames', () => page.evaluate(() => window.burnFrames(10)))));
+  expect(fired(err)).toContain('frame@ten slow frames');
+  expect(fired(err)).not.toContain('task@ten slow frames');
+  // the step name says nothing about the callback, so only the inside: line can name it
+  const inside = err.message.split('\n').find((l) => l.trim().startsWith('inside:'));
+  expect(inside).toMatch(/FunctionCall test\/feel\/pages\/bad-frame\.html:\d+ burn \d/);
 });
 
 test('bad-input: an 80ms click fails input and task and names the handler', async ({ page, feel }) => {
@@ -3565,6 +3892,20 @@ test('bad-shift: a row landing above the fold fails shift and names the list', a
   const err = await failing(feel.scenario('bad-shift', one(page, 'bad-shift', 'row lands above', () => page.evaluate(() => window.insertAbove()))));
   expect(fired(err)).toContain('shift@row lands above');
   expect(err.message).toContain('div#list');
+  // the warm-up's Shift is 600ms or more behind the first step (task 6), so the planted shift can't
+  // be excused as the ui answering an input
+  expect(err.report.runs[0].detail.shifts.filter((x) => x.sources.some((src) => src.path.includes('div#list'))).every((x) => x.hadRecentInput === false)).toBe(true);
+});
+
+test('feel.measure() throws on a deterministic violation: the bad-shift row', async ({ page, feel }) => {
+  test.setTimeout(60_000);
+  await page.goto(url('bad-shift'));
+  await page.evaluate(() => window.__gsFeel.ready());
+  const m = await feel.measure();
+  await page.evaluate(() => window.insertAbove());
+  const err = await m.stop().then(() => null, (e) => e);
+  expect(err?.name).toBe('GsFeelError');
+  expect(fired(err)).toContain('shift@measure');
 });
 
 test('bad-property: left and background-color both fail the property check', async ({ page, feel }) => {
@@ -3574,6 +3915,10 @@ test('bad-property: left and background-color both fail the property check', asy
   expect(props).toEqual(expect.arrayContaining(['left', 'background-color']));
   expect(err.message).toContain('animates left');
   expect(err.message).toContain('animates background-color');
+  // spec p20: the 0ms transition on #zero changed in the same step and created no Animation
+  expect(err.report.runs[0].detail.animations.some((a) => a.target.includes('div#zero'))).toBe(false);
+  // spec p14: the ::after animation was found through getAnimations({ subtree: true }) and named
+  expect(err.report.violations.some((v) => v.check === 'property' && v.data.target.includes('div#pseudo') && v.data.pseudo === '::after' && v.data.properties.includes('left'))).toBe(true);
 });
 
 test('bad-composite: transform on an inline span fails composite with the pinned bits', async ({ page, feel }) => {
@@ -3584,6 +3929,20 @@ test('bad-composite: transform on an inline span fails composite with the pinned
   expect(v.data.nodeName).toContain('span');
   expect(fired(err).some((f) => f.startsWith('property@'))).toBe(false);
   expect(err.message).toContain('transform cannot be accelerated on the target');
+});
+
+test('bad-overlap: a restack transition behind a finished, attached enter fails composite bit 6 on that element', async ({ page, feel }) => {
+  test.setTimeout(90_000);
+  const err = await failing(feel.scenario('bad-overlap', {
+    setup: async () => { await page.goto(url('bad-overlap')); },
+    steps: async (s) => {
+      await s.event('enter lands', () => page.evaluate(() => window.heldEnter()));
+      await s.event('restack', () => page.evaluate(() => window.restack()));
+    },
+  }));
+  const v = err.report.violations.filter((x) => x.check === 'composite');
+  expect(v.map((x) => [x.step.name, x.data.nodeName, x.data.bits & 64])).toEqual([['restack', "div id='held' class='box'", 64]]);
+  expect(err.message).toContain('another animation on the same property');
 });
 
 test('bad-family: eased event, stepped space and a shared carrier each fail', async ({ page, feel }) => {
@@ -3614,6 +3973,21 @@ test('bad-family in calm mode: a signal at glitch 0 fails', async ({ page, feel 
   expect(err.report.violations.map((v) => v.data.rule)).toContain('signal at glitch 0');
 });
 
+test('a calm scenario on a page not at glitch 0 is unevaluable, and so is a matrix glitch the page never reached', async ({ page, feel }) => {
+  test.setTimeout(60_000);
+  const setup = async () => {
+    await page.goto(url('bad-family'));
+    await page.evaluate(() => { document.documentElement.dataset.glitch = '1'; });
+  };
+  const steps = async (s) => { await s.event('glitch', () => page.evaluate(() => window.glitchAtZero())); };
+  const calm = await feel.scenario('calm-at-glitch-1', { matrix: [{ name: 'calm', mode: 'calm' }], setup, steps }).then(() => null, (e) => e);
+  expect(calm?.name).toBe('GsFeelUnevaluable');
+  expect(calm.message).toContain("mode 'calm' but the page is at data-glitch=\"1\"");
+  const drift = await feel.scenario('matrix-says-0', { matrix: [{ name: 'g0', glitch: '0' }], setup, steps }).then(() => null, (e) => e);
+  expect(drift?.name).toBe('GsFeelUnevaluable');
+  expect(drift.message).toContain('says glitch 0');
+});
+
 test('bad-silent: a dead control and an ambient-only change both fail as silent', async ({ page, feel }) => {
   test.setTimeout(90_000);
   const err = await failing(feel.scenario('bad-silent', {
@@ -3624,6 +3998,8 @@ test('bad-silent: a dead control and an ambient-only change both fail as silent'
     },
   }));
   expect(fired(err)).toEqual(expect.arrayContaining(['silent@dead control', 'silent@wallpaper tick']));
+  // the #bg wallpaper stepped every 40ms through both steps; ambient mutations never hold a step open
+  expect(fired(err).some((f) => f.startsWith('settle@'))).toBe(false);
 });
 
 test('a declared exemption no run uses fails the scenario', async ({ page, feel }) => {
@@ -3648,7 +4024,7 @@ test('the self test sees the planted input, task and shift', async ({ page, feel
 - [ ] **Step 3: run the feel project**
 
 Run: `npm run feel`
-Expected: `15 passed`. each negative asserts its own check on its own step. a negative that passes a planted page means the harness is blind to that check: fix the harness, never the control.
+Expected: `19 passed`. each negative asserts its own check on its own step. a negative that passes a planted page means the harness is blind to that check: fix the harness, never the control.
 
 - [ ] **Step 4: add the feel step to ci and trim the baseline**
 
@@ -3663,9 +4039,11 @@ in `.github/workflows/ci.yml`, replace the two steps task 1 added (the baseline 
           name: feel-reports
           path: test-results/**/feel-*
           if-no-files-found: ignore
-      # informational: the runner's numbers on the clean control, next to every feel run (spec 8.3)
+      # informational: the runner's numbers on the clean control, next to every feel run (spec 8.3).
+      # it gates nothing, so a crash here never turns ci red
       - run: node scripts/feel-baseline.js --runs=5 --dpr=2
         timeout-minutes: 3
+        continue-on-error: true
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
@@ -3674,12 +4052,16 @@ in `.github/workflows/ci.yml`, replace the two steps task 1 added (the baseline 
           if-no-files-found: ignore
 ```
 
-use `--dpr=1` in the baseline line if spec 8.7 chose dpr 1 for ci.
+use `--dpr=1` in the baseline line if spec 8.7 chose dpr 1 for ci. the job's `timeout-minutes: 40` from task 1 already covers the feel step's 10.
 
-- [ ] **Step 5: gates, then commit and push**
+- [ ] **Step 5: ARCHITECTURE.md**
+
+in `## deployment / ci`, replace the baseline part of the steps sentence with `-> \`npm run feel\` (10 minute cap) -> upload \`test-results/**/feel-*\` as \`feel-reports\` -> \`node scripts/feel-baseline.js --runs=5\` (informational, continue-on-error) -> upload \`feel-baseline\``. in `## stack`, the ci row becomes `` | ci | github actions, every action pinned to a commit sha | gen diff, unit, contrast, e2e, feel, runner baseline, report artifacts | ``. in `## tree`, the `test/feel` line becomes `test/feel                playwright feel project: harness.spec.js (controls), pages/`. last-updated line: `(v0.2 in progress, plan task 7)`.
+
+- [ ] **Step 6: gates, then commit and push**
 
 ```bash
-git add test/feel/pages/transform-no-shift.html test/feel/pages/bad-frame.html test/feel/pages/bad-input.html test/feel/pages/bad-key.html test/feel/pages/bad-task.html test/feel/pages/bad-shift.html test/feel/pages/bad-property.html test/feel/pages/bad-composite.html test/feel/pages/bad-family.html test/feel/pages/bad-silent.html test/feel/harness.spec.js .github/workflows/ci.yml
+git add test/feel/pages/transform-no-shift.html test/feel/pages/bad-frame.html test/feel/pages/bad-input.html test/feel/pages/bad-key.html test/feel/pages/bad-task.html test/feel/pages/bad-shift.html test/feel/pages/bad-property.html test/feel/pages/bad-composite.html test/feel/pages/bad-overlap.html test/feel/pages/bad-family.html test/feel/pages/bad-silent.html test/feel/harness.spec.js .github/workflows/ci.yml ARCHITECTURE.md
 npm run gen && git diff --exit-code
 npm test
 npm run check
@@ -3700,9 +4082,9 @@ gh run list --branch feat/v0.2 --limit 1 --json databaseId,headSha,status
 gh run watch <databaseId> --exit-status
 ```
 
-Expected: every local gate green, feel `15 passed`, and `gh run watch` exits 0 with the `npm run feel` step green on ubuntu. if the feel step fails only on ubuntu, read `gh run view <databaseId> --log | grep -A 30 'feel:'` and the `feel-reports` artifact (`gh run download <databaseId> -n feel-reports -D .superpowers/sdd/2026-09-24-ghost-signal-v0.2/ci-feel`) and debug with the docker loop from task 1 step 9, running `npx playwright test --project=feel --workers=1` inside the container.
+Expected: every local gate green, feel `19 passed`, and `gh run watch` exits 0 with the `npm run feel` step green on ubuntu. if the feel step fails only on ubuntu, read `gh run view <databaseId> --log | grep -A 30 'feel:'` and the `feel-reports` artifact (`gh run download <databaseId> -n feel-reports -D .superpowers/sdd/2026-09-24-ghost-signal-v0.2/ci-feel`) and debug with the docker loop from task 1 step 10, running `npx playwright test --project=feel --workers=1` inside the container.
 
-- [ ] **Step 6: measure the untouched gallery (scratch, not committed)**
+- [ ] **Step 7: measure the untouched gallery (scratch, not committed)**
 
 the gallery has no motion section yet and every known violation is still in it. this run is the list tasks 10 to 14 work from, and it is expected to fail.
 
@@ -4049,6 +4431,7 @@ spec 15 step 4 (second half), 7.4 (`npx ghost-signal lint-motion`), 9.2 `motion-
 - Modify: `scripts/ghost-signal.js` (the subcommand)
 - Create: `test/unit/motion-lint.test.js`
 - Create: `test/unit/fixtures/motion-lint/keyframe-left.css`, `transition-all.css`, `event-eased.css`, `spatial-stepped.css`, `ungated-event.css`, `unclassified.css`, `clean.css`
+- Modify: `ARCHITECTURE.md` (the subcommand)
 
 **Interfaces:**
 - Consumes: `cssRules(css)` from `scripts/lib/contrast.js`.
@@ -4299,10 +4682,14 @@ in `scripts/ghost-signal.js`: add `readFile` to the `node:fs/promises` import (`
 Run: `node --test test/unit/motion-lint.test.js test/unit/css.test.js test/unit/contrast.test.js`
 Expected: PASS, `ℹ fail 0`. on node 22 `fs.promises.glob` prints an experimental warning to stderr; the tests read stdout only.
 
-- [ ] **Step 7: gates, then commit**
+- [ ] **Step 7: ARCHITECTURE.md**
+
+in `## tree`, the `ghost-signal.js` line becomes `ghost-signal.js         cli: check | flavor check | flavor build | lint-motion` and the `lib/` line gains `motion-lint.js`. in `## commands`, add `node scripts/ghost-signal.js lint-motion 'src/*.css'`. last-updated line: `(v0.2 in progress, plan task 9)`.
+
+- [ ] **Step 8: gates, then commit**
 
 ```bash
-git add scripts/lib/contrast.js scripts/lib/motion-lint.js scripts/ghost-signal.js test/unit/motion-lint.test.js test/unit/fixtures/motion-lint/keyframe-left.css test/unit/fixtures/motion-lint/transition-all.css test/unit/fixtures/motion-lint/event-eased.css test/unit/fixtures/motion-lint/spatial-stepped.css test/unit/fixtures/motion-lint/ungated-event.css test/unit/fixtures/motion-lint/unclassified.css test/unit/fixtures/motion-lint/clean.css
+git add scripts/lib/contrast.js scripts/lib/motion-lint.js scripts/ghost-signal.js test/unit/motion-lint.test.js test/unit/fixtures/motion-lint/keyframe-left.css test/unit/fixtures/motion-lint/transition-all.css test/unit/fixtures/motion-lint/event-eased.css test/unit/fixtures/motion-lint/spatial-stepped.css test/unit/fixtures/motion-lint/ungated-event.css test/unit/fixtures/motion-lint/unclassified.css test/unit/fixtures/motion-lint/clean.css ARCHITECTURE.md
 npm run gen && git diff --exit-code
 npm test
 npm run check
@@ -5106,6 +5493,9 @@ spec 15 step 6, 3.3 (the gates), 6.1, 6.2 (`motionAllowed`, `enter`, `exit`, `en
 - Modify: `test/unit/css.test.js`
 - Create: `test/unit/motion.test.js`
 - Create: `test/e2e/pages/motion.html`, `test/e2e/motion.spec.js`
+- Create: `test/feel/pages/enter-restack.html`
+- Modify: `test/feel/harness.spec.js` (the enter-then-restack composite control)
+- Modify: `ARCHITECTURE.md` (motion.js and motion.css in the tree)
 
 **Interfaces:**
 - Consumes: `reducedMotion()` from `src/gs.js`. the tokens from task 8.
@@ -5332,10 +5722,13 @@ function slide(el, kind, { side, distance, duration, easing, fade, entering }) {
     return f;
   };
   const anim = el.animate([frame(start), frame(end)], { duration: time, easing: curve, fill: entering ? 'none' : 'forwards', id: `gs-move:${kind}` });
-  // an exit holds its away frame until this resolves, then lets go: the caller's own .then (hide,
-  // remove) runs in the same microtask checkpoint, so the element never flashes back
+  // cancelled the moment it lands, both ways. an exit holds its away frame until then, and the
+  // caller's own .then (hide, remove) runs in the same microtask checkpoint, so nothing flashes
+  // back. an enter ends at the element's own style, so cancelling it changes nothing on screen, and
+  // it has to go: a finished web animation still attached outranks a css transition on the same
+  // property, and chromium runs the toast's restack on the main thread behind it (bit 6) >:[
   return anim.finished.then(() => {
-    if (entering === false) anim.cancel();
+    anim.cancel();
     return true;
   }, () => false);
 }
@@ -5500,10 +5893,85 @@ Expected: `6 passed`.
 Run: `npm run check`
 Expected: `contrast ok` (now over three sheets).
 
-- [ ] **Step 6: gates, then commit**
+- [ ] **Step 6: the composite control for enter, then restack**
+
+the one feel control that loads ghost signal: it pins that `enter` leaves nothing behind for a later transition to trip on. task 7's `bad-overlap` proves the composite check sees the pattern; this proves `motion.js` doesn't produce it.
+
+`test/feel/pages/enter-restack.html`:
+
+```html
+<!doctype html>
+<html lang="en" data-glitch="1">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: enter, then restack</title>
+  <link rel="stylesheet" href="../../../src/tokens.css">
+  <link rel="stylesheet" href="../../../src/base.css">
+  <link rel="stylesheet" href="../../../src/motion.css">
+  <style>
+    #stack { position: relative; height: 120px; margin: 24px; }
+    #stack > div { position: absolute; left: 0; bottom: 0; width: 240px; height: 32px; background-color: var(--gs-color-raised);
+      transition: transform var(--gs-motion-shift) var(--gs-ease-move); }
+  </style>
+  <script type="module">
+    import { enter } from '../../../src/motion.js';
+    // the toast pattern with nothing else on the page: a slot enters through motion.js, lands, and
+    // is then restacked by its own css transition. chromium composites that transition only when no
+    // finished web animation is still attached to the slot (composite bit 6)
+    const stack = document.getElementById('stack');
+    window.arrive = () => {
+      const slot = Object.assign(document.createElement('div'), { textContent: `slot ${stack.children.length + 1}` });
+      stack.append(slot);
+      return enter(slot, { from: 'right', distance: 'toast' });
+    };
+    window.restack = () => {
+      const slots = [...stack.children];
+      slots.forEach((s, i) => { s.style.transform = `translateY(${-(slots.length - 1 - i) * 40}px)`; });
+    };
+    window.ready = true;
+  </script>
+</head>
+<body>
+  <p>enter, then restack</p>
+  <div id="stack"></div>
+</body>
+</html>
+```
+
+append to `test/feel/harness.spec.js`:
+
+```js
+test('motion.js: a slot that entered, then restacks by transition, composites', async ({ page, feel }) => {
+  test.setTimeout(90_000);
+  const [report] = await feel.scenario('enter-restack', {
+    setup: async () => {
+      await page.goto(url('enter-restack'));
+      await page.waitForFunction(() => window.ready === true);
+    },
+    steps: async (s) => {
+      await s.event('first slot arrives', () => page.evaluate(() => window.arrive()));
+      await s.event('second slot arrives', () => page.evaluate(() => window.arrive()));
+      await s.event('restack', () => page.evaluate(() => window.restack()));
+    },
+  });
+  expect(report.result).toBe('pass');
+  expect(report.runs[0].seen.composites, 'the positive control: the trace saw the enters and the restack').toBeGreaterThanOrEqual(3);
+});
+```
+
+Run: `npx playwright test --project=feel --workers=1 test/feel/harness.spec.js -g 'entered, then restacks'`
+Expected: `1 passed`.
+
+prove it bites: in `src/motion.js` change `anim.cancel();` inside `slide`'s `finished.then` to `if (entering === false) anim.cancel();` (the first draft), rerun the same command, and expect `1 failed` with `composite  transform on div ran on the main thread: another animation on the same property of this element blocks it` under step 2 "restack". the planning run failed three runs in three this way. put `anim.cancel();` back and rerun: `1 passed`.
+
+- [ ] **Step 7: ARCHITECTURE.md**
+
+in `## tree`, the first `src/` line becomes `tokens.css base.css fx.css motion.css icons.svg icons.js (generated: tokens.css icons.*)` and the `gs.js grid.js ...` line gains `motion.js`. in `## key patterns`, append to the motion bullet (task 24 rewrites it whole): `v0.2 in progress: \`motion.css\` (optional) and \`motion.js\` add eased spatial motion on transform and opacity; every helper cancels its web animation when it lands.` last-updated line: `(v0.2 in progress, plan task 15)`.
+
+- [ ] **Step 8: gates, then commit**
 
 ```bash
-git add src/motion.js src/motion.css src/base.css scripts/check-contrast.js test/unit/motion.test.js test/unit/css.test.js test/e2e/pages/motion.html test/e2e/motion.spec.js
+git add src/motion.js src/motion.css src/base.css scripts/check-contrast.js test/unit/motion.test.js test/unit/css.test.js test/e2e/pages/motion.html test/e2e/motion.spec.js test/feel/pages/enter-restack.html test/feel/harness.spec.js ARCHITECTURE.md
 npm run gen && git diff --exit-code
 npm test
 npm run check
@@ -5516,6 +5984,8 @@ space now eases on the compositor: web animations on transform and opacity, time
 tokens, tagged gs-move so the harness knows them. an interrupted motion turns around from where
 it is instead of restarting. motion.css is opt-in and carries the only switch motion.js reads,
 so an app without it keeps the v0.1 cuts, and reduced motion gets the end state at once.
+every helper cancels its animation when it lands: a finished one left attached made chromium
+run the next restack transition on the same element on the main thread.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 MSG
@@ -5537,7 +6007,7 @@ spec 6.2 (`flip`, `drawer`), 9.2 (`drawerProgress`, the reduced-motion half of `
 **Interfaces:**
 - Consumes: `token`, `isMove`, `translateOf`, `parseMs`, `retargetDuration`, `motionAllowed` (task 15).
 - Produces:
-  - `flip(targets, mutate, { duration = 'shift', easing = 'move', key })`: measures each target's visual rect, cancels its running `gs-move:*`, runs `mutate()`, and animates `transform` from the old offset to none with id `gs-move:flip`. `mutate` may return the rebuilt targets (an iterable) to match by `key(el)`; if it returns a promise, flip waits for it. the animations start before `flip` returns when `mutate` is synchronous. resolves `true` when every move finished.
+  - `flip(targets, mutate, { duration = 'shift', easing = 'move', key })`: measures each target's visual rect, cancels its running `gs-move:*`, runs `mutate()`, and animates `transform` from the old offset to none with id `gs-move:flip`. `mutate` may return the rebuilt targets (an iterable) to match by `key(el)`; if it returns a promise, flip waits for it. the animations start before `flip` returns when `mutate` is synchronous. resolves `true` when every move finished, and cancels each move as it lands (task 15's reason). the drawer already cancels its pair when it ends.
   - `drawerProgress(transformY, height, opening)`: `0..1`, the drawer's open fraction from a follower's current `translateY` (from the inner's with `opening = true`).
   - `drawer({ height = 0, duration = 'shift', easing = 'move' })` returning `{ play({ inner, followers, open = true, from, height }), reverse(), adopt({ inner, followers }), progress, running, finished }`. geometry: opening, followers and inner both run `translateY(-(1 - from) * h)` to `0`; closing, followers run `translateY(from * h)` to `0` and the inner runs `translateY(-(1 - from) * h)` to `translateY(-h)`. the caller flips its own layout (the clip in flow when open, out of flow while closing) before calling `play` or `reverse`. every animation id is `gs-move:drawer`.
 
@@ -5646,7 +6116,9 @@ export function flip(targets, mutate, { duration = 'shift', easing = 'move', key
       const dy = was.top - now.top;
       if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
       const a = el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0px, 0px)' }], { duration: full, easing: curve, id: 'gs-move:flip' });
-      moves.push(a.finished.then(() => true, () => false));
+      // cancelled when it lands, like every motion.js animation: a finished one left attached makes
+      // chromium run a later transform transition on this element on the main thread (task 15)
+      moves.push(a.finished.then(() => { a.cancel(); return true; }, () => false));
     }
     return Promise.all(moves).then((all) => all.every(Boolean));
   };
@@ -6271,7 +6743,7 @@ test('a bypass toast glitches its item and never its slot; the slot only slides 
   expect(r.from).toBe('translate(24px, 0px)');
 });
 
-test('dismissing slides the slot out to the right, removes it, then the stack closes up', async ({ page }) => {
+test('dismissing the newest slides it out, removes it, then the older slot closes the gap', async ({ page }) => {
   await page.evaluate(() => {
     const t = document.getElementById('toasts');
     t.toast({ status: 'deny', text: 'one' });
@@ -6279,14 +6751,20 @@ test('dismissing slides the slot out to the right, removes it, then the stack cl
   });
   // the first slot restacks only after its own 167ms enter, then eases 200ms: let both finish
   await page.waitForTimeout(700);
-  const leaving = await page.evaluate(() => {
-    const first = document.querySelector('#toasts [part="slot"]');
-    first.querySelector('[part="ok"]').click();
-    return { ids: first.getAnimations().map((a) => a.id), leaving: first.hasAttribute('data-leaving') };
+  // the newest sits at the bottom at translateY(0px) the whole time, so dismissing it is the case
+  // where something has to move: the older slot, from above, down to 0
+  const r = await page.evaluate(() => {
+    const [older, newest] = document.querySelectorAll('#toasts [part="slot"]');
+    const before = older.style.transform;
+    newest.querySelector('[part="ok"]').click();
+    return { before, ids: newest.getAnimations().map((a) => a.id), leaving: newest.hasAttribute('data-leaving') };
   });
-  expect(leaving).toEqual({ ids: ['gs-move:exit'], leaving: true });
+  expect(r.before).not.toBe('translateY(0px)');
+  expect({ ids: r.ids, leaving: r.leaving }).toEqual({ ids: ['gs-move:exit'], leaving: true });
   await expect(page.locator('#toasts [part="slot"]')).toHaveCount(1);
   await expect.poll(() => page.evaluate(() => document.querySelector('#toasts [part="slot"]').style.transform)).toBe('translateY(0px)');
+  // and it got there on screen, not only in its style attribute
+  await expect.poll(() => page.evaluate(() => new DOMMatrixReadOnly(getComputedStyle(document.querySelector('#toasts [part="slot"]')).transform).m42)).toBe(0);
 });
 ```
 
@@ -6786,6 +7264,7 @@ joe's ask on top of the spec, and spec 13 risk 8 (visual change without a failin
 - Modify: `.gitignore` (`gallery/showcase/`)
 - Create: `test/showcase/motion.showcase.js`
 - Create: `scripts/showcase-clips.sh`
+- Modify: `ARCHITECTURE.md` (the showcase in tree and commands)
 
 **Interfaces:**
 - Consumes: `FEEL_PROFILES.m5` (task 6); the gallery ids and `window.gallery` methods from tasks 13 to 21 (`#motion-tabs [data-view]`, `#toast-burst`, `#motion-shuffle`, `#motion-bars-new`, `#motion-list`, `#row-list`, `#open-window`, `#window-no`, `[data-toast-pick]`, `[data-status-pick]`, `#wordmark`, `window.gallery.ambient`).
@@ -7000,13 +7479,19 @@ Run: `chmod +x scripts/showcase-clips.sh`
 Run: `npm run showcase`
 Expected: `48 passed`, then `showcase-clips: 48 clips in gallery/showcase/clips, 16 stills in gallery/showcase/stills`. check one: `ffprobe -v error -show_entries stream=width,height,codec_name -of csv=p=0 gallery/showcase/clips/space-palette-open-highlight-close-glitch1.mp4` prints `h264,1470,956`. open `gallery/showcase/stills/event-crash-toast-mosh-glitch1.png` and look at it: the rebuilt mosh is the one visual change joe still has to sign off (open question 6).
 
+one more thing for joe's eye, written into the scratch notes for the hand-off: the drawer moves only the sibling rows (spec 6.6). whatever sits after the rows' container (in the gallery, the `#chrome` section below `#row-list`) jumps by the drawer's height in one frame, and on collapse the following rows are positioned, in transform stacking contexts, and paint over the next section for about 200ms. that matches the spec as written; the `space-row-drawer-*` clips are where to look, and a different call (clip the list, or move the section with the rows) is joe's.
+
 Run: `git status --short`
 Expected: nothing under `gallery/showcase/` is listed (it's ignored); only the four source changes from steps 1 to 3.
 
-- [ ] **Step 5: gates, then commit**
+- [ ] **Step 5: ARCHITECTURE.md**
+
+in `## tree`, add `showcase-clips.sh       showcase webm to mp4 clips and stills (ffmpeg)` under `scripts/`, `test/showcase            the video walk (npm run showcase), not a test suite` under `test/feel`, and `showcase/ (gitignored)` on the gallery line. in `## commands`, add `npm run showcase`. last-updated line: `(v0.2 in progress, plan task 22)`.
+
+- [ ] **Step 6: gates, then commit**
 
 ```bash
-git add playwright.config.js package.json .gitignore test/showcase/motion.showcase.js scripts/showcase-clips.sh
+git add playwright.config.js package.json .gitignore test/showcase/motion.showcase.js scripts/showcase-clips.sh ARCHITECTURE.md
 npm run gen && git diff --exit-code
 npm test
 npm run check
@@ -7030,15 +7515,17 @@ Expected: every gate green; `npm run e2e` and `npm run feel` never run the showc
 
 ### task 23: the gallery scenario, green
 
-spec 15 step 7, 9.4 (`gallery.feel.js`), 6.5 (the two prepared fixes, applied only where the harness asks). the real scenario, committed once it passes.
+spec 15 step 7, 9.4 (`gallery.feel.js`), 6.5 (the two prepared fixes, applied only where the harness asks). the real scenario, committed once it passes under the option joe picked for decision d1 (top of this plan). steps 1 and 2 run as soon as task 22 is done; step 3's d1 half waits for joe's answer.
 
 **Files:**
 - Create: `test/feel/gallery.feel.js`
 - Modify, only if the harness flags them: `src/gs.js` (`fxOnce` restart without a forced reflow; `motionMs` memoized per frame; the theme repaint split), `gallery/gallery.js` (the glitch switch split), `src/motion.css` (a leaving toast slot drops its restack transition)
+- Modify, under d1 option c1 only: `src/feel/probe.js`, `src/feel/playwright.js`, `src/feel/evaluate.js`, `src/feel/format.js`, `test/unit/feel-evaluate.test.js`, `test/unit/feel-format.test.js`, `test/feel/harness.spec.js`, `docs/superpowers/specs/2026-09-24-ghost-signal-v0.2-design.md` (7.4 and 8.5)
+- Modify, under d1 options a, b, c2 or c3: what that option's paragraph in step 3 names
 
 **Interfaces:**
-- Consumes: the whole harness (tasks 2 to 7) and the whole gallery (tasks 10 to 21).
-- Produces: `test/feel/gallery.feel.js`, one test per matrix entry: `g1-dark` and `g2-dark` in full, `calm` and `still` on the subset that changes with them, `g1-light` on theme repaint, toasts and faces.
+- Consumes: the whole harness (tasks 2 to 7) and the whole gallery (tasks 10 to 21). joe's d1 answer.
+- Produces: `test/feel/gallery.feel.js`, one test per matrix entry: `g1-dark` and `g2-dark` in full, `calm` and `still` on the subset that changes with them, `g1-light` on theme repaint, toasts and faces. under c1, also the per-step frame exemption `{ frame: false, why }` in the public api.
 
 - [ ] **Step 1: write the scenario**
 
@@ -7115,16 +7602,16 @@ for (const m of MATRIX) {
 - [ ] **Step 2: run it and read every report**
 
 Run: `npx playwright test --project=feel --workers=1 test/feel/gallery.feel.js`
-Expected, first time: either `5 passed`, or failures whose text names the step and the check. for each failure read `test-results/**/feel-gallery-<matrix>.txt`.
+Expected, first time: failures whose text names the step and the check. for each failure read `test-results/**/feel-gallery-<matrix>.txt`.
 
-what the planning dry run already saw. the plan's own code for tasks 1 to 21, applied in a scratch tree and run with `GS_FEEL_RUNS=1` on the m5 (2026-09-25), gave: `still` passes; the other four entries fail on
+what the planning run saw, with tasks 1 to 21 as written here (the task 2 decoder, the task 15 and 16 cancels) in a scratch tree on the m5, `GS_FEEL_RUNS=1`, 2026-09-25:
 
-- frame, 17 to 26ms of main-thread cpu in the frame after `theme light`, `theme dark` (g1-dark, g2-dark, g1-light) and after `glitch 2` / `glitch 1 again` (g1-dark, g2-dark). the `inside:` lines split it into script, the `watchTheme` observer repainting every mosaic (`src/gs.js:133`, 10 to 16ms) or `window.gallery.setGlitch` (`gallery/gallery.js:107`, 13ms), plus a whole-document `UpdateLayoutTree` (9 to 17ms) in the same frame.
-- composite bit 6 (the target has another animation on the same property that chromium couldn't composite with it) on toast slots while toasts expire and restack, on the view body and the tab indicator at `view two` / `view three` in `calm`, and on `gs-face` glitches at `status ok` in `g1-light`. a two-switch view sequence run on its own, probe armed and fully traced, at dpr 1 and dpr 2, composites cleanly, so the trigger is state an earlier step leaves behind.
+- `still` and `calm` pass. every entry reports "all composited": the view-body, indicator and face bit 6 lines of the first draft were the decoder bug task 2 fixed, and the toast slot's was the finished enter task 15 fixed.
+- `g1-dark`, `g2-dark` and `g1-light` fail on the theme and glitch steps only, `frame`. before the two splits below, the `inside:` lines name `src/gs.js` `(anonymous)` from the `watchTheme` observer (10 to 16ms of canvas repaints) or `gallery/gallery.js` `setGlitch` (11 to 14ms), plus an `UpdateLayoutTree` over the whole document. after both splits, what's left is 17.0 to 23.8ms frames that are the flip's style recalc (10.7 to 17.0ms, measured untraced) plus its input dispatch and paint. that remainder is d1.
 
-with the theme split and the glitch split below applied, the script left those frames, and what remained was the recalc itself: 17.6 to 23.6ms frames with `UpdateLayoutTree` at 11 to 17ms of them. the same flip measured without tracing (`document.documentElement.dataset.theme = ...` then `document.body.offsetHeight`, timed in the page) costs 10.7ms the first time on a fresh page and 3 to 5ms after, over 2079 elements, so tracing roughly doubles or triples recalc thread time and every measured run is a fresh, cold page. expect the first real run to say the same. the fixes below are ordered by how directly the dry run points at them.
+a new composite bit 6 (one the dry run didn't see): rerun that one entry with `GS_FEEL_RUNS=1`, open `feel-gallery-<entry>-run1.trace.json` in chrome devtools, and list what runs on the named node around the step's `gs-feel:1:<step>:start` mark with a temporary `evaluate` of `JSON.stringify(document.querySelector('<the node>').getAnimations({ subtree: true }).map((a) => [a.constructor.name, a.id || a.animationName || a.transitionProperty, a.playState]))` (remove it before committing). remember that a finished web animation doesn't show in `getAnimations()` and still counts (task 7's `bad-overlap`); look for a helper that doesn't cancel on finish first. fix the cause on that one carrier, add a control like task 15's, and write the finding into the commit body.
 
-- [ ] **Step 3: apply the fixes only where the report asks**
+- [ ] **Step 3: apply the prepared fixes where the report asks, then the d1 option**
 
 apply the `fxOnce` fix when a frame, input or task violation's `inside:` or `scripts:` line names `fxOnce`, or shows `Layout` or `UpdateLayoutTree` repeated (`x8`, `x7`, ...) with `forced from src/gs.js` and `fxOnce`. in `src/gs.js`, replace `fxOnce` with:
 
@@ -7224,7 +7711,7 @@ export function watchTheme(el) {
 }
 ```
 
-`test/e2e/face.spec.js` already polls for the repainted pixels (`expect.poll`, 2s), so it keeps passing; run `npx playwright test --project=chromium test/e2e/face.spec.js test/e2e/mosaic.spec.js test/e2e/gallery.spec.js` to confirm. in the dry run this took the theme frames from 18 to 26ms down to one borderline 17.9ms frame, which is why the observer above only schedules and measures nothing.
+`test/e2e/face.spec.js` already polls for the repainted pixels (`expect.poll`, 2s), so it keeps passing; run `npx playwright test --project=chromium test/e2e/face.spec.js test/e2e/mosaic.spec.js test/e2e/gallery.spec.js` to confirm. in the dry run this took the canvas repaints out of the flip's frame (18 to 26ms before), leaving the style recalc d1 is about. the observer only schedules and measures nothing, so it adds no forced read of its own.
 
 apply the glitch switch split when a frame violation after a glitch step names `gallery/gallery.js` `(anonymous)` (the dry run's `gallery/gallery.js:107`, `setGlitch`, 11 to 14ms). the rows' re-render and the ambient restart read computed style right after the attribute flip, which forces the whole-page recalc inside the handler. in `gallery/gallery.js`, replace `setGlitch`:
 
@@ -7243,45 +7730,164 @@ apply the glitch switch split when a frame violation after a glitch step names `
 
 the gallery specs that switch glitch levels read the result through auto-waiting assertions (`toHaveCount`, `toHaveAttribute`) or wait 300ms before screenshots, so they keep passing; run `npx playwright test --project=chromium test/e2e/gallery.spec.js` to confirm.
 
-apply the leaving-slot fix when a composite bit 6 names a toast slot (`div` inside `gs-toast`, during expiry or restack). a slot that starts its exit while its restack transition still runs has two transform animations on one carrier. append to `src/motion.css`, inside the `no-preference` query:
+apply the leaving-slot fix only when a composite bit 6 still names a toast slot (`div` inside `gs-toast`, during expiry or restack) after tasks 2, 15 and 16. the dry run's toast bit 6 was the finished enter, which task 15 fixed; a slot that starts its exit while its restack transition still runs would be a second cause, with two transform animations on one carrier. append to `src/motion.css`, inside the `no-preference` query:
 
 ```css
   /* a leaving slot drops its restack transition, so its exit is the only transform animation on it */
   gs-toast [part="slot"][data-leaving] { transition: none; }
 ```
 
-for any other bit 6 (the view body, the indicator, a face glitch), find the second animation before fixing anything: rerun the one failing entry with `GS_FEEL_RUNS=1`, open the attached `feel-gallery-<entry>-run1.trace.json` in chrome devtools (performance panel, load profile), find the `Animation` events for that node around the step's `gs-feel:1:<step>:start` mark, and list every animation on the node at that moment by adding a temporary `console.log(JSON.stringify(document.querySelector('<the node>').getAnimations({ subtree: true }).map((a) => [a.constructor.name, a.id || a.animationName || a.transitionProperty, a.playState])))` evaluate inside that step (remove it before committing). the fix is whatever removes the overlap on that one carrier, the same rule as the toast slot and the item; write the finding and the fix into the commit body.
-
 after any fix: `node --test test/unit/gs.test.js` must pass, `npx playwright test --project=chromium test/e2e/gallery.spec.js test/e2e/face.spec.js test/e2e/row.spec.js` must pass (the glitch data-t test and the ambient test exercise `fxOnce`), then rerun step 2.
 
-if a violation remains that none of these fixes addresses (spec 13 risk 6 names another likely one: the wallpaper's 4-per-second canvas redraw over a full splash), stop. the dry run says the theme and glitch steps will most likely end here: once the script is out of their frame, the frame is the whole-page recalc, and its cost inside the trace is mostly the tracing itself. measure it without tracing on the same page and put both numbers side by side:
+what's left after the prepared fixes is d1: the theme and glitch frames. before going on, confirm the flip still costs what d1 says, so joe's answer rests on this tree's numbers. start `npm run serve` in another terminal, then:
 
 ```bash
-node -e "
-const { chromium } = require('@playwright/test');
-(async () => {
-  const b = await chromium.launch();
-  const p = await b.newPage({ viewport: { width: 1470, height: 956 }, deviceScaleFactor: 2 });
-  await p.goto('http://127.0.0.1:4173/gallery/?glitch=1');
-  await p.waitForSelector('html[data-gallery-ready]');
-  console.log(await p.evaluate(() => [0, 1, 2, 3].map((i) => { const t = performance.now(); document.documentElement.dataset.theme = i % 2 ? 'dark' : 'light'; void document.body.offsetHeight; return Math.round((performance.now() - t) * 10) / 10; })));
-  await b.close();
-})();
+node --input-type=module -e "
+import { chromium } from '@playwright/test';
+// the flip's style recalc, timed in the page with no probe and no trace: a bubble listener runs after
+// the gallery's own click handler and forces the recalc the frame pays anyway. the control is a
+// click on the h2 that changes nothing, and it must read about 0
+const b = await chromium.launch();
+const out = {};
+for (let i = 0; i < 5; i++) {
+  const ctx = await b.newContext({ viewport: { width: 1470, height: 956 }, deviceScaleFactor: 2 });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => { window.__r = []; addEventListener('click', () => { const t = performance.now(); void document.body.offsetHeight; window.__r.push(Math.round((performance.now() - t) * 10) / 10); }); });
+  await page.goto('http://127.0.0.1:4173/gallery/?glitch=1&theme=dark');
+  await page.waitForSelector('html[data-gallery-ready]');
+  await page.waitForTimeout(600);
+  for (const [k, sel] of [['control', 'h2'], ['theme light', '[data-theme-pick=light]'], ['theme dark', '[data-theme-pick=dark]'], ['glitch 2', '[data-glitch-pick=\"2\"]'], ['glitch 1', '[data-glitch-pick=\"1\"]']]) {
+    await page.evaluate(() => { window.__r = []; });
+    await page.locator(sel).first().click();
+    await page.waitForTimeout(300);
+    (out[k] ??= []).push(await page.evaluate(() => window.__r[0]));
+  }
+  await ctx.close();
+}
+await b.close();
+for (const [k, v] of Object.entries(out)) console.log(k, 'median', [...v].sort((x, y) => x - y)[2], v.join(' '));
 "
 ```
 
-(start `npm run serve` in another terminal first.) run it a second time with `await p.addInitScript((await import('./src/feel/probe.js')).installProbe);` before the `goto` (use `node --input-type=module -e` for the dynamic import) and still no tracing: the gap between the bare and the probed numbers is the probe's own cost (spec 13 risk 5), and the gap between the probed number and the traced frame is tracing's (spec 8.6). joe needs both. the dry run also tried `content-visibility: auto; contain-intrinsic-size: auto 24px` on the 300 list rows: the traced frames stayed at 17.5 to 24ms, so it isn't the fix. spec 8.6 is explicit that the budgets don't move to absorb tracing overhead and that this goes to joe before anything changes, so it stops here: the untraced numbers, the traced frame lines, and the three honest options (a cheaper theme and glitch flip in the gallery, trace-free measurement for recalc-bound frames, or joe's call on those two steps) go into the scratch notes and to joe. never shrink the gallery, pre-flip the theme in `setup`, or drop the steps to get green. the plan pauses here: task 24 documents `gallery.feel.js` as green, so it waits for joe's call. copy the report text into the scratch notes and surface it with the step, the check and the culprit line. never loosen a budget, add an exemption without a real why, or drop a step to get green; an exemption is only right when the page is doing what it should (the one legitimate case here is a step whose only answer is the 1px press, which gets `{ answer: false, why: 'the press is the answer' }`).
+Expected: `control median 0` (0 to 0.2), and the four flips with medians near d1's table (12 to 16.3ms). if the control reads more than 1ms, the timer isn't measuring the flip: fix the snippet before reading anything else. if every flip median is now under 11ms and step 2's frames pass, d1 is moot: skip to step 4 and tell joe. otherwise the frames stay over, and joe's answer decides the rest of this step:
+
+**option a (a cheaper flip).** time-boxed to one working session. record `UpdateLayoutTree` with the `disabled-by-default-blink.debug` category on one theme flip (selector stats and element count), then try one lever at a time, each measured by the snippet above and by step 2's traced frames: fewer custom properties each component's stylesheet reads, the universal `::before`/`::after`/`::selection`/`::-webkit-scrollbar` rules in `base.css`, and the number of inherited `--gs-*` tokens that change between themes. the levers d1 already ruled out stay ruled out. a lever that works lands in `src/` with its own before and after numbers in the commit body. success is step 2 green three runs in a row with no exemption. if the time box runs out first, stop and go back to joe with a table of levers and numbers; the scenario isn't committed red.
+
+**option b (trace-free measurement for recalc-bound frames).** spec 7.7 (the frame row's gate source) and 8.4 (cpu over wall) change first, in joe's words. then `evaluate.js` judges a frame whose heaviest child is an `UpdateLayoutTree` over the document by the probe's untraced in-page recalc timer (the snippet's method, run inside the step) instead of trace `tdur`, with unit tests for both paths and the `bad-frame` control unchanged. the numbers say the flips still fail (10.7 to 17.0ms of recalc before ~2ms of dispatch and ~3ms of paint), so after the rerun this goes back to joe with the untraced frames; it doesn't get the scenario committed by itself.
+
+**option c1 (a per-step frame exemption, the recommendation).** the step option `{ frame: false, why }` joins `{ answer: false, why }`: it needs a why, prints in every report with the frames it covered, and fails the scenario when no run needed it, so it goes away once the flip fits.
+
+in `docs/superpowers/specs/2026-09-24-ghost-signal-v0.2-design.md`, 7.4's step options sentence becomes: `` step options: `{ answer: false, why }` for a step that shouldn't visibly answer, `{ frame: false, why }` for a step whose over-budget frame joe has accepted (added <date> by joe, plan decision d1: a whole-page theme or glitch flip), `{ settleTimeout }`. ``. append to 8.5's last bullet: `` a `frame: false` step exemption doesn't scale anything: the frame values still print, and an exemption no run needs fails the test. ``
+
+in `src/feel/probe.js`, `stepStart({ index, name, kind, answer, why })` becomes `stepStart({ index, name, kind, answer, frame = true, why })`, and the step object gains `frameExpected: frame` next to `answerExpected: answer`.
+
+in `src/feel/playwright.js` `drive()`, after the `answer: false` check add
+
+```js
+    if (opts.frame === false) requireWhy(opts.why, `step "${name}" with frame: false`);
+```
+
+and pass `frame: opts.frame !== false` in the `stepStart` argument, next to `answer`.
+
+in `src/feel/evaluate.js`: `judgeStep`'s returned object gains `frameExpected: s.frameExpected !== false,` after `answerExpected`. in `needsThirdRun`, the `return TIMING_CHECKS.some(...)` line becomes, so an exempt frame never buys a third run:
+
+```js
+    return TIMING_CHECKS.some((c) => (c === 'frame' && s.frameExpected === false) === false
+      && (valueOf(s, c) > budgets[c]) !== (t === undefined ? false : valueOf(t, c) > budgets[c]));
+```
+
+in `combineRuns`, declare `const exempted = [];` next to `const unconfirmed = [];`, and right after `const values = ...;` inside the `for (const check of TIMING_CHECKS)` loop:
+
+```js
+      // joe's accepted hitch (plan d1): the values still go in the report, never in a violation
+      if (check === 'frame' && step.frameExpected === false) {
+        if (values.some((v) => v.value > limit)) exempted.push({ check, step: refOf(step), limit, values, why: step.why });
+        continue;
+      }
+```
+
+after the answer-exemption loop add:
+
+```js
+  for (const s of runs[0].steps) {
+    if (s.frameExpected !== false) continue;
+    const target = `step ${s.index} "${s.name}"`;
+    const used = exempted.some((x) => x.step.index === s.index);
+    exemptions.push({ kind: 'frame', target, why: s.why, used });
+    if (used === false) violations.push({ check: 'exemption', step: refOf(s), runs: [], data: { kind: 'frame', target, why: s.why } });
+  }
+```
+
+and add `exempted,` to the returned report after `unconfirmed`. in `src/feel/format.js` `formatReport`, after the `exemptions:` line:
+
+```js
+  if ((r.exempted ?? []).length > 0) out.push(`exempted: ${r.exempted.map((x) => `step ${x.step.index} ${x.check} ${f1(Math.max(...x.values.map((v) => v.value)))}ms (${runValues(x)})`).join('; ')}`);
+```
+
+tests. in `test/unit/feel-evaluate.test.js`, the builder's sample step gains `frameExpected: st.frameExpected ?? true,`, and:
+
+```js
+test('a frame exemption covers an over-budget frame, keeps its values, and fails when no run needed it', () => {
+  const flip = { kind: 'input', tasks: [{ at: 100, dur: 30 }], frameExpected: false, why: 'a whole-page flip' };
+  const used = fold([build({ steps: [flip] }), build({ index: 2, steps: [flip] })]);
+  assert.equal(used.result, 'pass');
+  assert.deepEqual(used.exemptions, [{ kind: 'frame', target: 'step 0 "step 0"', why: 'a whole-page flip', used: true }]);
+  assert.deepEqual(used.exempted.map((x) => [x.check, x.values.map((v) => v.value)]), [['frame', [30, 30]]]);
+  const unused = fold([build({ steps: [{ kind: 'input', frameExpected: false, why: 'a whole-page flip' }] })], { runsPlanned: 1 });
+  assert.deepEqual(checks(unused), ['exemption']);
+});
+```
+
+in `test/unit/feel-format.test.js`, in the passing strict report test, add `exempted: [{ check: 'frame', step: { index: 1, name: 'theme light', kind: 'input', inputType: 'click' }, limit: 16.7, values: [{ run: 1, value: 21.4 }], why: 'a whole-page flip' }],` to the report and the line `'exempted: step 1 frame 21.4ms (run 1 21.4)',` after the `exemptions:` line of the expected text. in `test/feel/harness.spec.js`:
+
+```js
+test('a frame exemption: used on the slow frames it passes and prints them, declared on a clean step it fails', async ({ page, feel }) => {
+  test.setTimeout(120_000);
+  const why = 'a control for the frame exemption';
+  const [report] = await feel.scenario('frame-exempt', {
+    setup: async () => { await page.goto(url('bad-frame')); },
+    steps: async (s) => { await s.event('ten slow frames', () => page.evaluate(() => window.burnFrames(10)), { frame: false, why }); },
+  });
+  expect(report.exemptions).toEqual([{ kind: 'frame', target: 'step 0 "ten slow frames"', why, used: true }]);
+  expect(report.exempted.map((x) => x.check)).toEqual(['frame']);
+  const err = await failing(feel.scenario('frame-exempt-unused', {
+    setup: async () => { await page.goto(url('clean')); },
+    steps: async (s) => { await s.input('toggle', () => page.locator('#toggle').click(), { frame: false, why }); },
+  }));
+  expect(fired(err)).toContain('exemption@toggle');
+});
+```
+
+Run: `node --test test/unit/feel-evaluate.test.js test/unit/feel-format.test.js` (expect `ℹ fail 0`) and `npx playwright test --project=feel --workers=1 test/feel/harness.spec.js` (expect one more pass than before).
+
+then in `test/feel/gallery.feel.js`, above `async function walk`, add:
+
+```js
+// plan decision d1, joe <date>: a whole-page theme or glitch flip restyles ~3700 elements in one
+// frame, 10.7 to 17ms of style recalc on the m5 with nothing traced. the frames still print in every
+// report, and the day a flip fits 16.7ms this exemption goes unused and fails the test
+const FLIP = { frame: false, why: 'a whole-page theme or glitch flip restyles ~3700 elements in one frame (plan d1, accepted by joe)' };
+```
+
+and pass `FLIP` as the third argument to the six theme and glitch steps: `theme dark` and `theme light again` in the light set, `theme light`, `theme dark`, `glitch ${other}` and `glitch ${m.glitch} again` in the full set. rerun step 2: expected `5 passed`, and each of the three flipping entries' `.txt` shows an `exempted:` line. a flip that happens to fit in every run of an entry leaves its exemption unused and fails that entry: that's the ratchet working, and the answer is to drop `FLIP` from that one step.
+
+**option c2 (the steps leave the scenario).** delete the six theme and glitch steps from `walk`, add a paragraph to the spec's 8.7 with d1's numbers and joe's words, and quote joe in the commit body. rerun step 2: expected `5 passed`.
+
+**option c3 (joe changes 8.5).** apply exactly what joe writes, spec first, then code, each with unit tests; rerun step 2.
+
+whatever the option, never shrink the gallery, pre-flip the theme in `setup`, loosen a budget, or add an exemption without joe's words behind it. the one exemption that needs no joe is a step whose only answer is the 1px press, which gets `{ answer: false, why: 'the press is the answer' }`.
 
 - [ ] **Step 4: the whole feel project, timed**
 
 Run: `time npm run feel`
-Expected: `20 passed` (15 harness controls plus 5 gallery entries) in under 8 minutes on the mac. if it takes longer, note the time in the scratch notes: ci caps the step at 10 minutes and ubuntu is slower than the m5.
+Expected: every harness test and the 5 gallery entries passed, `26 passed` under c1 (task 7's 19, task 15's enter-restack, the exemption control, the 5 entries) and `25 passed` under a or c2, in under 8 minutes on the mac. then, after step 5's push, read the ci step's duration: `gh run view <databaseId> --json jobs --jq '.jobs[].steps[] | select(.name | test("feel")) | [.name, .startedAt, .completedAt]'`. if `npm run feel` took over 8 of its 10 minutes on ubuntu, raise that step's `timeout-minutes` to 15 and the job's to 45, and add one line to the spec's 8.7 saying so. the step cap is a ci budget, not a feel budget, so this loosens nothing joe measures.
 
 - [ ] **Step 5: gates, then commit and push**
 
 ```bash
 git add test/feel/gallery.feel.js
 git add src/gs.js src/motion.css gallery/gallery.js   # only the ones step 3 changed
+# under c1, also: src/feel/probe.js src/feel/playwright.js src/feel/evaluate.js src/feel/format.js test/unit/feel-evaluate.test.js test/unit/feel-format.test.js test/feel/harness.spec.js docs/superpowers/specs/2026-09-24-ghost-signal-v0.2-design.md
 npm run gen && git diff --exit-code
 npm test
 npm run check
@@ -7302,20 +7908,20 @@ gh run list --branch feat/v0.2 --limit 1 --json databaseId,headSha,status
 gh run watch <databaseId> --exit-status
 ```
 
-if step 3 changed anything, `git add` each changed file by path, and the commit body gets one more paragraph per fix naming it and the report line that asked for it; the subject stays the same. Expected: every local gate green, and `gh run watch` exits 0 with the feel step green on ubuntu. a feel failure only on ubuntu: read the `feel-reports` artifact (`gh run download <databaseId> -n feel-reports -D .superpowers/sdd/2026-09-24-ghost-signal-v0.2/ci-feel`) and the step summary's unconfirmed list, reproduce in the docker loop (task 1 step 9, running `npx playwright test --project=feel --workers=1 test/feel/gallery.feel.js`), and fix the cause; the same no-loosening rule applies.
+the commit body gets one more paragraph per prepared fix naming it and the report line that asked for it, and one for the d1 option: under c1, that a whole-page flip costs 10.7 to 17ms of recalc on the m5 untraced, that joe accepted it on <date>, and that `{ frame: false, why }` prints the frames and fails once unused. the subject stays the same. Expected: every local gate green, and `gh run watch` exits 0 with the feel step green on ubuntu. a feel failure only on ubuntu: read the `feel-reports` artifact (`gh run download <databaseId> -n feel-reports -D .superpowers/sdd/2026-09-24-ghost-signal-v0.2/ci-feel`) and the step summary's unconfirmed list, reproduce in the docker loop (task 1 step 10, running `npx playwright test --project=feel --workers=1 test/feel/gallery.feel.js`), and fix the cause; the same rules apply. a flip that's over budget on ubuntu and fine on the mac is still d1's case, and c1's exemption covers it only on the steps joe named.
 
 ---
 
 ### task 24: docs and the 0.2.0 version
 
-spec 15 step 8, 11 (README, ARCHITECTURE.md, the v0.1 spec, the probe app's `^0.2`, the sync script), and the unit fixtures the bump would otherwise break. not the tag: joe runs `GS_FEEL_RUNS=1 npm run feel` on his mac, looks at the gallery and the showcase, then tags `v0.2.0` himself (spec 15 step 9).
+spec 15 step 8, 11 (README, ARCHITECTURE.md, the v0.1 spec, the probe app's `^0.2`, the sync script), and the unit fixtures the bump would otherwise break. it runs only after task 23's commit, and what the readme says about `gallery.feel.js` follows the d1 option task 23 took. not the tag: joe runs `GS_FEEL_RUNS=1 npm run feel` on his mac, looks at the gallery and the showcase, then tags `v0.2.0` himself (spec 15 step 9).
 
 **Files:**
 - Modify: `package.json`, `package-lock.json` (version, through `npm version`)
 - Modify: `gallery/apps/probe/app.json`, `gallery/apps/probe/flavor.json` (`^0.2`)
 - Regenerate: `gallery/apps/probe/flavor.css`, `gallery/apps/probe/flavor.js` (gen runs `flavorBuild` on the probe; their content doesn't change, the range check does)
 - Modify: `test/unit/fixtures/flavor-bad-contrast.json`, `flavor-locked-key.json`, `probe-fixture/app.json`, `probe-fixture/flavor.json`, `vendored-app/app.json`, `rogue-ts/app.json`, `gs-namespace/app.json` (`^0.2`), `test/unit/fixtures/flavor-bad-range.json` (`^0.3`), `test/unit/cli.test.js` (the range message)
-- Modify: `scripts/sync-ghost-signal.sh` (usage line)
+- Modify: `scripts/sync-ghost-signal.sh` (usage line, and `tokens.json` joins what it copies)
 - Modify: `README.md`, `ARCHITECTURE.md`, `docs/superpowers/specs/2026-09-23-ghost-signal-design.md` (3.6 and a new 9.6)
 
 **Interfaces:**
@@ -7332,7 +7938,18 @@ change `"ghostSignal": "^0.1"` to `"ghostSignal": "^0.2"` in `gallery/apps/probe
 Run: `grep -rn '"\^0\.1"' gallery test/unit/fixtures`
 Expected: no output.
 
-in `scripts/sync-ghost-signal.sh`, change the usage comment to `# usage: DEST=vendor/ghost-signal scripts/sync-ghost-signal.sh v0.2.0`.
+in `scripts/sync-ghost-signal.sh`, change the usage comment to `# usage: DEST=vendor/ghost-signal scripts/sync-ghost-signal.sh v0.2.0` and the result comment to `# result: $DEST/src $DEST/gen $DEST/schema $DEST/tokens.json and $DEST/VERSION holding the tag. drift is a grep on VERSION`. then, after the `for part in src gen schema` loop, add:
+
+```bash
+# src/feel/budgets.js reads the feel budgets from ../../tokens.json, so a vendored copy without it
+# can't run the harness an app's e2e calls (spec 7.1)
+cp "$WORK/repo/tokens.json" "$DEST/tokens.json"
+```
+
+prove it on a vendored copy made from this branch's last commit (the clone reads committed files; the script is the working-tree one):
+
+Run: `DEST=.superpowers/sdd/2026-09-24-ghost-signal-v0.2/vendor-check GS_REPO=/Volumes/T7/ghost-signal scripts/sync-ghost-signal.sh feat/v0.2 && node --input-type=module -e "import { loadBudgets } from '/Volumes/T7/ghost-signal/.superpowers/sdd/2026-09-24-ghost-signal-v0.2/vendor-check/src/feel/budgets.js'; console.log(loadBudgets().frame)"`
+Expected: `ghost-signal feat/v0.2 synced into ...` and then `16.7`. the same `node` line against a copy made without the new `cp` throws `ENOENT` on `tokens.json`, which is the bug this fixes.
 
 Run: `npm run gen && npm test`
 Expected: gen writes its files (the probe flavor output is byte-identical), `ℹ fail 0`.
@@ -7417,10 +8034,36 @@ test('the palette answers back', async ({ page, feel }) => {
 });
 ```
 
+step options: `{ answer: false, why }` for a control whose only answer is the 1px press, `{ frame: false, why }` for a step whose over-budget frame you've decided to accept (ghost signal's own gallery uses it on its theme and glitch switches: a whole-page restyle of ~3700 elements costs 10.7 to 17ms of style recalc on an m5). both print in every report with what they covered, and both fail the test when no run needed them.
+
 run it alone: `playwright test --project=feel --workers=1`. each scenario runs once unmeasured, then twice measured, and a third time when the two disagree. timing checks take the median, structural checks fail on the first run that shows them, and `GS_FEEL_RUNS=1` is the strict single-run mode for the machine the app ships to. a failure prints the step, the check, how far over and what the page was doing, and attaches the report and the trace under `test-results/`. `feel.selfTest()` plants a slow click and a layout shift in your own page and fails if the harness can't see them.
+
+a vendored copy (`scripts/sync-ghost-signal.sh`) carries `tokens.json` next to `src/`, because the harness reads its budgets from it.
 
 supported: `@playwright/test` 1.58.2 and chromium. ghost signal pins that version and imports nothing from it. install browsers under node 24: 1.58.2's extraction hangs forever under node 26. tauri apps ship in wkwebview, so the frame and input numbers are a chromium stand-in; run the scripted interactions by hand in the installed app before a release.
 ````
+
+the `{ frame: false, why }` paragraph above is for option c1 of decision d1. under a, drop its second sentence's gallery example; under c2 or c3, drop the paragraph's frame half and say in `## gallery` which steps the scenario leaves out and why.
+
+after `## the feel harness`, add:
+
+````markdown
+## upgrading from 0.1
+
+`"ghostSignal": "^0.1"` no longer matches: a 0.x caret pins the minor, so move `app.json` and `flavor.json` to `^0.2` in the same change as the bump. then check your css and tests for these:
+
+| what changed | why it can break you |
+|---|---|
+| keyframes renamed: `gs-glitch-shift`, `gs-glitch-a`, `gs-glitch-b`, `gs-mosh`, `gs-flare`, `gs-tape-scroll` are now `gs-event-glitch-shift`, `gs-event-glitch-a`, `gs-event-glitch-b`, `gs-event-mosh` (plus `-a` and `-b`), `gs-event-flare`, `gs-event-tape` | css or tests that name a keyframe. the classes `.gs-glitch`, `.gs-mosh`, `.gs-flare` stay |
+| `.gs-flare` sets `position: relative; isolation: isolate` and `.gs-mosh` sets `position: relative` at glitch 1 and 2 while they run | `flareOnce` or `moshOnce` on an absolutely positioned or sticky element changes its layout for 640ms or 420ms. v0.1 did this only for `.gs-glitch` |
+| `gs-palette [part="list"]` starts with the highlight's `<span part="indicator">` | `:first-child` and `nth-child` row selectors shift by one. select rows by `[part="row"]` |
+| `gs-palette.close()` does nothing when the palette isn't open | code that relied on `close()` firing its side effects on a closed palette |
+| toasts sit in `[part="slot"]`, a row's detail in `[part="clip"]`, and `gs-decode` sets `data-final` while it plays | child combinators (`gs-toast > [part="item"]`) and snapshots of the dom. descendant selectors keep working |
+| hover and focus color are cuts: `base.css` has no transitions, and `--gs-motion-hover` is 0ms (removed in 0.3) | a consumer transition on `var(--gs-motion-hover)` now does nothing |
+| buttons, row heads and palette rows drop 1px on `:active` | pixel snapshots taken mid click |
+````
+
+the github release for `v0.2.0` takes that section as its notes.
 
 in `## gallery`, append: `` `?glitch=2&theme=light` lands on a glitch level and theme in one navigation. `npm run showcase` records every space and event motion at glitch 0, 1 and 2 into `gallery/showcase/` as mp4 clips and stills (git-ignored, needs ffmpeg). ``
 
@@ -7433,20 +8076,20 @@ npm run showcase   # video of every motion, for looking at before a tag
 
 - [ ] **Step 3: ARCHITECTURE.md**
 
-make these edits:
+tasks 1, 2, 6, 7, 9, 15 and 22 already put the scripts, `src/feel/`, `test/feel`, `test/showcase`, the commands, the ci steps and the tests and ci rows in. read the file against the list below: add what's missing and don't add a line twice. then make these edits:
 
 - first paragraph: after the plan path sentence add `v0.2: \`docs/superpowers/specs/2026-09-24-ghost-signal-v0.2-design.md\`, plan \`docs/superpowers/plans/2026-09-24-ghost-signal-v0.2.md\`.`
 - `## overview`: append `motion is split in two: space (something arrives, leaves or changes place) eases on the compositor through \`motion.css\` and \`motion.js\`, signal (the system reports an event) steps in \`fx.css\`. \`src/feel/\` is a playwright fixture every app's e2e runs, which fails the build on frames, input, tasks, layout shifts, animated properties, composite failures and silent inputs.`
-- `## stack` table, add two rows and extend two:
+- `## stack` table, add two rows (the tests and ci rows are already current):
 
 ```markdown
 | motion | `src/motion.css` (optional) + `src/motion.js`: web animations and css transitions on `transform` and `opacity` only | space eases on the compositor, signal steps, reduced motion and a missing `motion.css` both cut |
 | feel harness | `src/feel/`: an in-page probe (performance observers, animation capture) plus a cdp trace per run, judged in pure node | one definition of buttery that ghost signal and every app enforce in ci |
 ```
 
-  the `tests` row becomes `` `node:test` + `@playwright/test` (chromium) against `scripts/serve.js`; the \`feel\` project runs alone | contrast, determinism, reduced motion, plug-in probe, feel budgets ``, and the `ci` row becomes `` github actions, every action pinned to a commit sha | gen diff, unit, contrast, e2e, feel, runner baseline, report artifacts ``.
 - `## tree`: add under `scripts/` the lines `feel-baseline.js        the clean control n times: the runner's frame cpu, stalls, drops, calibration`, `record-feel-fixtures.js dev only: records the chromium traces the trace.js tests read`, `showcase-clips.sh       showcase webm to mp4 clips and stills (ffmpeg)`, and add `motion-lint.js` to the `lib/` line. under `src/` add `motion.css motion.js       the spatial layer (optional css, js helpers)` and `feel/                   probe.js playwright.js trace.js budgets.js evaluate.js format.js errors.js index.js`. under `test/` add `test/feel                playwright feel project: harness.spec.js (controls), gallery.feel.js, pages/` and `test/showcase            the video walk (npm run showcase), not a test suite`, and `gallery/showcase/ (gitignored)` on the gallery line.
-- `## key patterns`: replace the bullet that starts `motion is a hard cut.` with:
+- `## tree`: check the lines tasks 1 to 22 added, and add `scripts/sync-ghost-signal.sh` copying `tokens.json` (its line becomes `copies src/ gen/ schema/ tokens.json into a no-bundler consumer`).
+- `## key patterns`: replace the bullet that starts `motion is a hard cut.` (with task 15's `v0.2 in progress` sentence) with:
 
 ```markdown
 - motion has three classes. space (views, overlays, toasts, drawers, indicators, bars, the scroll
@@ -7466,9 +8109,12 @@ make these edits:
   a stall instead of failing the app. input to paint reads event timing (8ms rounding), shifts read
   layout instability, properties and families read the probe's animation capture, composites read
   the trace's `compositeFailed`. every gap in what it can see throws `GsFeelUnevaluable`.
+- every `motion.js` animation is cancelled the moment it lands. a finished web animation still
+  attached to an element outranks a css transition on the same property, and chromium runs that
+  transition on the main thread (composite bit 6).
 ```
 
-- `## deployment / ci`: in the steps sentence, after `npm run e2e`, add `-> \`npm run feel\` (10 minute cap) -> upload \`test-results/**/feel-*\` as \`feel-reports\` -> \`node scripts/feel-baseline.js --runs=5\` (informational) -> upload \`feel-baseline\``, and change `v0.1.0` to `v0.2.0` in the release sentence.
+- `## deployment / ci`: the steps sentence already has the feel and baseline steps (task 7); change `v0.1.0` to `v0.2.0` in the release sentence.
 - `## gotchas`: append:
 
 ```markdown
@@ -7491,9 +8137,18 @@ make these edits:
   fix: build it before `html.dataset.galleryReady = '1'`; the body stays hidden until then.
 - problem: `lint-motion` flags a keyframe name the app thinks is fine. cause: the family comes
   from the name. fix: `<ns>-event-*` for stepped signal, `<ns>-spatial-*` for eased space.
+- problem: a feel report pins a composite failure on an element that composites fine. cause:
+  chromium reuses an `Animation` trace event's id once the previous animation ends. fix:
+  `compositeResults` opens a record per begin event; keep it that way when touching trace.js.
+- problem: a theme or glitch switch fails the frame check on a big page. cause: flipping an
+  attribute on `:root` restyles every element (10.7 to 17ms over ~3700 elements on the m5, with no
+  trace). fix: joe's call, plan decision d1; the gallery's answer is in `test/feel/gallery.feel.js`.
+- problem: `feel.scenario` throws unevaluable with `mode 'calm'` or `says glitch`. cause: setup
+  left the page at a glitch level the matrix entry doesn't describe. fix: land the page there in
+  setup (`?glitch=0`, the app's calm key); the fixture never sets it.
 ```
 
-- `## commands`: add `npm run feel`, `GS_FEEL_RUNS=1 npm run feel`, `npm run showcase`, `node scripts/ghost-signal.js lint-motion 'src/*.css'`, `node scripts/feel-baseline.js --runs=20 --dpr=2` and `node scripts/record-feel-fixtures.js` lines, and change the sync line to `v0.2.0`.
+- `## commands`: the feel, showcase, lint-motion, baseline and recorder lines are in from tasks 1 to 22; change the sync line to `v0.2.0`.
 - last line: `last updated: 2026-09-25 (v0.2.0)`.
 
 - [ ] **Step 4: the v0.1 spec's 3.6 and 9**
@@ -7542,8 +8197,11 @@ a frame over 16.7ms of main-thread cpu, input to paint over 50ms, a task over 50
 with no recent input, an animated property other than `transform` or `opacity`, an animation
 chromium can't composite, a family violation, and an input nothing answers within 50ms.
 `test/feel/harness.spec.js` proves the harness on planted controls, `test/feel/gallery.feel.js`
-holds the gallery to it at glitch 1 and 2, calm, reduced motion and the light theme.
+holds the gallery to it at glitch 1 and 2, calm, reduced motion and the light theme. its theme
+and glitch switches carry joe's frame exemption (v0.2 plan, decision d1).
 ```
+
+(the last sentence is for d1 option c1. under a, drop it; under c2 or c3, say which steps are out and why.)
 
 - [ ] **Step 5: voice pass over the prose this task added**
 
@@ -7566,10 +8224,12 @@ git commit -F- <<'MSG'
 docs: document hybrid motion and the feel harness, bump to 0.2.0
 
 the readme, architecture and the v0.1 spec now describe space, signal and cuts, motion.css and
-motion.js, the -event- and -spatial- naming, and how an app wires the feel harness into its own
-playwright suite. the version moves to 0.2.0 with every ^0.1 range in the same commit, since a
-0.x caret pins the minor and the probe app would otherwise fail gen. the tag is joe's, after he
-runs the strict feel pass on his mac and looks at the gallery and the showcase.
+motion.js, the -event- and -spatial- naming, how an app wires the feel harness into its own
+playwright suite, and what a 0.1 consumer has to check when it moves. the version moves to 0.2.0
+with every ^0.1 range in the same commit, since a 0.x caret pins the minor and the probe app
+would otherwise fail gen. the sync script now vendors tokens.json, which the harness reads its
+budgets from. the tag is joe's, after he runs the strict feel pass on his mac and looks at the
+gallery and the showcase.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 MSG
@@ -7578,7 +8238,7 @@ gh run list --branch feat/v0.2 --limit 1 --json databaseId,headSha,status
 gh run watch <databaseId> --exit-status
 ```
 
-Expected: every local gate green and `gh run watch` exits 0. then stop: no tag, no merge, no pr edit. the hand-off to joe is spec 15 step 9, word for word: run `GS_FEEL_RUNS=1 npm run feel` on the m5, look at the gallery (mosh, hover cuts, the space set at glitch 0, 1 and 2) and `gallery/showcase/`, then tag `v0.2.0`.
+Expected: every local gate green and `gh run watch` exits 0. then stop: no tag, no merge, no pr edit. the hand-off to joe is spec 15 step 9, word for word: run `GS_FEEL_RUNS=1 npm run feel` on the m5, look at the gallery (mosh, hover cuts, the space set at glitch 0, 1 and 2) and `gallery/showcase/`, then tag `v0.2.0`. two more lines go with it: the drawer note from task 22 (content below a drawer's list jumps, and collapsing rows paint over the next section for about 200ms; see the `space-row-drawer-*` clips), and the readme's `## upgrading from 0.1` table as the release notes.
 
 ---
 
@@ -7586,8 +8246,31 @@ Expected: every local gate green and `gh run watch` exits 0. then stop: no tag, 
 
 checked against the spec after writing, per the writing-plans skill.
 
-**spec coverage.** 1.1 and 3 (the motion rule): tasks 8, 10, 11, 15 to 21. 1.2 and 7 (the harness): tasks 2 to 7. 2 (the spikes): turned into committed fixtures and controls in tasks 1 and 7, with the planning spikes' answers in the table at the top. 4.1 (seance inventory): the primitives it needs (`enter`, `exit`, `enterView`, `flip`, `drawer` with `adopt`, `indicator`, `[data-gs-value]`) land in tasks 15 to 17; seance itself is out of scope. 4.2 (super app contract): the same primitives, plus `indicator(sidebar, { axis: 'y' })`. 5.1 to 5.5: task 8 (and task 3 for the feel group). 6.1: task 15. 6.2: tasks 15 to 17. 6.3: tasks 10 (transitions, press), 12 (decode), 13 (toast slots), 18 (centering, `data-leaving`, palette list), 20 (row clip). 6.4: task 11. 6.5: task 11 (`moshOnce`), task 23 (the prepared fixes, conditional). 6.6: tasks 12, 13, 18, 19, 20. 7.1 to 7.9: tasks 2 to 7. 8.1 to 8.6: task 1 (baseline), task 6 (isolation, fixed environment, settle warm arm, median), task 4 (cpu over wall, quantization, unconfirmed). 9.1: tasks 10, 11, 15. 9.2: tasks 2 to 5, 8, 9, 13 (`toast.test.js`), 15, 16. 9.3: tasks 12, 13, 15 to 20. 9.4: tasks 6, 7, 23. 10: tasks 6 and 7. 11: every row, the last three in task 24. 13 risk 8 and joe's showcase ask: task 22. 14: every open-question default is built in (1 cut, 2 literal, 3 answer on, 4 composite on, 5 m5 1470x956, 6 rebuilt mosh, 7 flip at the top is seance's, 8 self-hosted runner as the stop rule in task 1). 15 steps 1 to 8: tasks 1 to 24 in that order; step 9 is joe's; step 10 is out of scope.
+**spec coverage.** 1.1 and 3 (the motion rule): tasks 8, 10, 11, 15 to 21. 1.2 and 7 (the harness): tasks 2 to 7. 2 (the spikes): turned into committed fixtures and controls in tasks 1 and 7, with the planning spikes' answers in the table at the top. 4.1 (seance inventory): the primitives it needs (`enter`, `exit`, `enterView`, `flip`, `drawer` with `adopt`, `indicator`, `[data-gs-value]`) land in tasks 15 to 17; seance itself is out of scope. 4.2 (super app contract): the same primitives, plus `indicator(sidebar, { axis: 'y' })`. 5.1 to 5.5: task 8 (and task 3 for the feel group). 6.1: task 15. 6.2: tasks 15 to 17. 6.3: tasks 10 (transitions, press), 12 (decode), 13 (toast slots), 18 (centering, `data-leaving`, palette list), 20 (row clip). 6.4: task 11. 6.5: task 11 (`moshOnce`), task 23 (the prepared fixes, conditional). 6.6: tasks 12, 13, 18, 19, 20. 7.1 to 7.9: tasks 2 to 7. 8.1 to 8.6: task 1 (baseline), task 6 (isolation, fixed environment, settle warm arm, median), task 4 (cpu over wall, quantization, unconfirmed). 9.1: tasks 10, 11, 15. 9.2: tasks 2 to 5, 8, 9, 13 (`toast.test.js`), 15, 16. 9.3: tasks 12, 13, 15 to 20. 9.4: tasks 6, 7, 23. 10: tasks 6 and 7. 11: every row, the last three in task 24. 13 risk 8 and joe's showcase ask: task 22. 14: every open-question default is built in (1 cut, 2 literal, 3 answer on, 4 composite on, 5 m5 1470x956, 6 rebuilt mosh, 7 flip at the top is seance's, 8 self-hosted runner as the stop rule in task 1). 15 steps 1 to 8: tasks 1 to 24 in that order, with step 7 (task 23) finished under joe's d1 option; step 9 is joe's; step 10 is out of scope.
 
-**placeholders.** searched for `TBD`, `TODO`, `similar to task`, `appropriate`, `handle edge`, `fill in`: none. the only values written as `<...>` are ones measured at execution time (task 1's ci numbers and run id, `gh` run ids), each with the rule that turns the measurement into a value.
+**spec 2, every probe row re-proved in the repo.** p1: task 6's apparatus check, run by every feel test. p2: task 4's stall test and task 6's steadiness gate, held by the clean control. p3: task 4's 48/56 test and task 7's `bad-input`. p5: the clean control's `press t` step (task 6), evaluable through trusted keydown and `eventCounts`. p6: `bad-key`. p7: `toast.spec.js`'s zero-shift burst (task 13). p8: `bad-shift`. p9, p10: `transform-no-shift` and the clean control. p11: `bad-input` naming `slowclick`. p12: `untrusted`. p13: the recorded `composite` fixture's 8224 hover (tasks 1, 2) and task 10's no-transition css test. p14: `bad-property`'s `::after` animation (task 7). p15: the `composite` and `reuse` fixtures, `bad-composite`, `bad-overlap`. p16: `click-70ms` and the stall unit tests. p17: the baseline and the drops test. p18: `click-70ms`'s `MOUSE_PRESSED`. p19: the clock test. p20: `bad-property`'s `#zero`. p21: the lint-motion fixtures and the shipped-sheet lint (tasks 9, 11). p22: task 14's zero-shift gallery test and the gallery scenario's `load` step. p4 has no committed control (deferred, below).
 
-**names across tasks.** `GsFeelUnevaluable`, `GsFeelError` (`.report`), `GsFeelConfigError` from `src/feel/errors.js`, re-exported by `budgets.js` and `index.js`. `summarizeTrace`, `frameCosts`, `decodeComposite`, `COMPOSITE_IGNORED`, `stepWindows` (task 2) used by tasks 4 and 6. `evaluateRun`, `needsThirdRun`, `combineRuns`, `DROPS_GATE` (task 4) used by task 6. `formatReport` (task 5) used by task 6. `FEEL_PROFILES.m5`, `feelUse`, `feelProject`, `withFeel`, `STEADY_MISSES` (task 6) used by tasks 7, 22, 23. `stackOffsets` (task 13). `enter`, `exit`, `enterView`, `motionAllowed` (task 15), `flip`, `drawer`, `drawerProgress` (task 16), `indicator` (task 17) used by tasks 18 to 21. the samples shape is defined once in task 4 and implemented field for field by the probe in task 6.
+**deferred, with the reason.**
+- spec 8.2's `cpuSlowdown` local stress knob. it gates nothing and changes no budget or report field, and a control worth having has to prove the throttle reached the renderer (a calibration ratio) and that throttled runs stay steady, which is a small design of its own. it can land after 0.2.0 without touching anything this plan builds.
+- a committed control for p4 (a cold page's first input at 48 to 56ms). proving it needs a way to run a scenario without the warm-up, which is a harness knob nobody should use otherwise; the warm-up stays, and the spec keeps p4's numbers as its reason.
+
+**the plan review (2026-09-25), item by item.**
+- task 23 known to fail at task 23: decision d1 now sits before task 1 with the measured numbers, what was tried, and what tasks 23 and 24 do under each option. the measurement also corrected the first draft: the frames are the page's own cost, and tracing adds about 1ms.
+- composite bit 6 with no root cause: found. the decoder merged reused trace ids (fixed in task 2, recorded fixture), and `enter` left finished animations attached (fixed in tasks 15 and 16, negative control in task 7, positive control in task 15). folded into those tasks instead of a new one; the deviations list says why.
+- calm reporting green on nothing: task 6 checks `data-glitch="0"` for `calm` and the matrix `glitch` key against the page, at setup and at arm; task 7's control proves both throw.
+- `DROPS_GATE`: task 4 step 3 sets it from 8.7, like `CI_DPR` and `BAD_COMPOSITE_BITS`.
+- the first sweep's false answer: `arm()` records what already runs without answering, and a swept animation that began before the input never answers it (task 6).
+- the composite check's apparatus: `judgeComposites` throws unevaluable when the probe saw animations start and the trace has no `Animation` event (task 4, unit tested).
+- assertions that tested nothing: `bad-frame` now asserts the `inside:` line, which exposed a real attribution bug fixed in task 2; task 19 dismisses the newest toast and asserts the older one moves.
+- untested public surface: `feel.measure()` has a positive (task 6) and a negative (task 7) control, `src/feel/index.js` its own test (task 6), ambient settling the `bad-silent` ticker (task 7).
+- spec items with no task: the 7.9 json (per-run detail, `unevaluable` result) in tasks 4 and 6; visibility at arming in task 6; p5, p14 and p20 controls; `cpuSlowdown` and p4 deferred above.
+- vendored budgets: the sync script copies `tokens.json` (task 24), proved on a vendored copy.
+- 0.1 consumer changes: the readme's `## upgrading from 0.1` table, also the release notes (task 24).
+- the drawer and the content below it: task 22 puts it in front of joe with the clips to look at.
+- ci time: the job cap is 40 minutes with the arithmetic in the yaml, the baseline steps have `continue-on-error`, and task 23 step 4 raises the feel step's cap from ubuntu's measured time if it needs to.
+- the bad-shift margin: arming waits until 600ms after the warm-up's `Shift` (task 6), and the control asserts `hadRecentInput === false`.
+- ARCHITECTURE.md only in task 24: tasks 1, 2, 6, 7, 9, 15 and 22 now update it as they add structure.
+
+**placeholders.** searched for `TBD`, `TODO`, `similar to task`, `appropriate`, `handle edge`, `fill in`: none. the only values written as `<...>` are ones known at execution time (task 1's ci numbers and run id, `gh` run ids, `<today>` in `ARCHITECTURE.md`'s last-updated line, `<date>` for the day joe answers d1), each with the rule that fills it in.
+
+**names across tasks.** `GsFeelUnevaluable`, `GsFeelError` (`.report`), `GsFeelConfigError` from `src/feel/errors.js`, re-exported by `budgets.js` and `index.js` (pinned by `feel-index.test.js`). the probe's `arm()` returns the `apparatus()` snapshot (`glitch` included) and the samples' animations carry `origin` (task 6), which task 4's composite apparatus check reads; the report's runs carry `detail` (task 4). `summarizeTrace`, `frameCosts`, `decodeComposite`, `COMPOSITE_IGNORED`, `stepWindows` (task 2) used by tasks 4 and 6. `evaluateRun`, `needsThirdRun`, `combineRuns`, `DROPS_GATE` (task 4) used by task 6. `formatReport` (task 5) used by task 6. `FEEL_PROFILES.m5`, `feelUse`, `feelProject`, `withFeel`, `STEADY_MISSES` (task 6) used by tasks 7, 22, 23. `stackOffsets` (task 13). `enter`, `exit`, `enterView`, `motionAllowed` (task 15), `flip`, `drawer`, `drawerProgress` (task 16), `indicator` (task 17) used by tasks 18 to 21. the samples shape is defined once in task 4 and implemented field for field by the probe in task 6.
