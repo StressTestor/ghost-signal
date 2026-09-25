@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { GsFeelUnevaluable } from '../../src/feel/errors.js';
 import {
   TRACE_CATEGORIES, rendererPid, mainThread, topLevelTasks, beginFrames, compositeResults, decodeComposite,
-  eventLatencies, summarizeTrace, frameCosts,
+  eventLatencies, summarizeTrace, frameCosts, childEvents,
 } from '../../src/feel/trace.js';
 
 const load = async (name) => JSON.parse(await readFile(new URL(`./fixtures/feel/${name}.trace.json`, import.meta.url), 'utf8')).traceEvents;
@@ -122,6 +122,60 @@ test('EventLatency pairs begin and end by id on the renderer', () => {
   const pressed = eventLatencies(click, rendererPid(click)).find((l) => l.type === 'MOUSE_PRESSED');
   assert.ok(pressed !== undefined);
   assert.ok(pressed.dur > 60, `mouse pressed took ${pressed.dur}ms`);
+});
+
+// PipelineReporter comes from the browser pid too, and the fixtures only hold the renderer's. each
+// decoy goes in twice: on the browser pid it must change nothing, and the same event on the renderer
+// pid must count, so a decoy that's malformed can't pass by being ignored for the wrong reason
+test('drops, latencies and composite results ignore the same events from the browser pid', () => {
+  const browser = (ev) => ev.find((e) => e.name === 'TracingStartedInBrowser').pid;
+  const plus = (ev, extra) => [...ev, ...extra];
+
+  const cp = rendererPid(click);
+  const w = summarizeTrace(click).windows.get('1:0');
+  const drop = (pid) => ({ name: 'PipelineReporter', ph: 'b', pid, tid: 1, ts: w.start + 1, id2: { local: '0xdecoy' }, args: { frame_reporter: { state: 'STATE_DROPPED', affects_smoothness: true } } });
+  const drops = summarizeTrace(click).drops.length;
+  assert.notEqual(browser(click), cp);
+  assert.equal(summarizeTrace(plus(click, [drop(browser(click))])).drops.length, drops);
+  assert.equal(summarizeTrace(plus(click, [drop(cp)])).drops.length, drops + 1);
+
+  const lat = (pid) => [
+    { name: 'EventLatency', ph: 'b', pid, tid: 2, ts: w.start + 1, id2: { local: '0xdecoy' }, args: { event_latency: { event_type: 'MOUSE_PRESSED' } } },
+    { name: 'EventLatency', ph: 'e', pid, tid: 2, ts: w.start + 80_001, id2: { local: '0xdecoy' }, args: {} },
+  ];
+  const pressed = (ev) => eventLatencies(ev, cp).filter((l) => l.type === 'MOUSE_PRESSED').length;
+  assert.equal(pressed(plus(click, lat(browser(click)))), pressed(click));
+  assert.equal(pressed(plus(click, lat(cp))), pressed(click) + 1);
+
+  const kp = rendererPid(comp);
+  const t0 = Math.min(...comp.filter((e) => e.name === 'Animation').map((e) => e.ts));
+  const anim = (pid) => [
+    { name: 'Animation', ph: 'b', pid, tid: 3, ts: t0 + 1, id2: { local: '0xdecoy' }, args: { data: { nodeName: "DIV id='decoy'", displayName: '' } } },
+    { name: 'Animation', ph: 'n', pid, tid: 3, ts: t0 + 2, id2: { local: '0xdecoy' }, args: { data: { compositeFailed: 64 } } },
+  ];
+  assert.deepEqual(compositeResults(plus(comp, anim(browser(comp))), kp), compositeResults(comp, kp));
+  const planted = compositeResults(plus(comp, anim(kp)), kp);
+  assert.equal(planted.length, compositeResults(comp, kp).length + 1);
+  assert.ok(planted.some((r) => r.nodeName === "div id='decoy'" && r.compositeFailed === 64));
+});
+
+// spec 7.9's `forced from` line, and task 23 applies the fxOnce fix only when it names fxOnce. the
+// layout runs inside both calls, and the innermost one is the script that asked for it
+test('a forced layout is pinned on the innermost function call around it, and a free one on none', () => {
+  const call = (ts, dur, url, lineNumber, functionName) => ({ name: 'FunctionCall', ph: 'X', pid: 1, tid: 7, ts, dur, args: { data: { url, lineNumber, functionName } } });
+  const ev = [
+    started(1), thread(1, 7), task(1, 7, 0, 1000, 900),
+    call(10, 900, 'http://h/outer.js', 0, 'outer'),
+    call(20, 500, 'http://h/src/gs.js', 168, 'fxOnce'),
+    { name: 'Layout', ph: 'X', pid: 1, tid: 7, ts: 30, dur: 100 },
+    { name: 'UpdateLayoutTree', ph: 'X', pid: 1, tid: 7, ts: 950, dur: 20 },
+  ];
+  const kids = childEvents(ev, 1, 7);
+  assert.equal(kids.find((c) => c.name === 'Layout').forcedFrom, 'src/gs.js:169 fxOnce');
+  assert.equal(kids.find((c) => c.name === 'UpdateLayoutTree').forcedFrom, undefined);
+  // the recorded one: the fixture's click listener forces a style recalc
+  const forced = summarizeTrace(comp).children.filter((c) => c.forcedFrom !== undefined);
+  assert.deepEqual(forced.map((c) => [c.name, c.forcedFrom]), [['UpdateLayoutTree', '(inline):7730 listener']]);
 });
 
 test('the clock maps trace microseconds to performance.now() through the marks', () => {
