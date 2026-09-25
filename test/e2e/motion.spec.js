@@ -77,6 +77,18 @@ test('glitch 0 kills signal, never space: enter still moves at glitch 0', async 
   expect(n).toEqual(['gs-move:view']);
 });
 
+test('data-gs-still stops a toast slot transition, on the toast or on the slot', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    document.body.insertAdjacentHTML('beforeend', `
+      <gs-toast><div part="slot" id="moving"></div></gs-toast>
+      <gs-toast data-gs-still><div part="slot" id="still-toast"></div></gs-toast>
+      <gs-toast><div part="slot" id="still-slot" data-gs-still></div></gs-toast>`);
+    const read = (id) => getComputedStyle(document.getElementById(id)).transitionProperty;
+    return { moving: read('moving'), stillToast: read('still-toast'), stillSlot: read('still-slot') };
+  });
+  expect(r).toEqual({ moving: 'transform', stillToast: 'none', stillSlot: 'none' });
+});
+
 test('without motion.css every helper cuts', async ({ page }) => {
   const r = await page.evaluate(async () => {
     document.querySelector('link[href$="motion.css"]').remove();

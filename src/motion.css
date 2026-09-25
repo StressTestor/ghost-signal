@@ -6,8 +6,10 @@
   :root { --gs-space: 1; }
 
   [part="indicator"] { transition: transform var(--gs-motion-indicator) var(--gs-ease-move); }
-  gs-toast [part="slot"] { transition: transform var(--gs-motion-shift) var(--gs-ease-move); }
+  :where(gs-toast) [part="slot"] { transition: transform var(--gs-motion-shift) var(--gs-ease-move); }
   [data-gs-value] { transition: transform var(--gs-motion-value) var(--gs-ease-move); }
+  /* the opt out wins on source order alone, so every rule above stays at one attribute of
+     specificity. a bare gs-toast outranks it and the slot keeps sliding (¬‿¬) */
   [data-gs-still], [data-gs-still] * { transition: none; }
 
   /* a sticky header's hairline fades in over the first 24px of scroll, on the compositor's scroll

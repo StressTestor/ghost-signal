@@ -199,7 +199,7 @@ holds every spatial css rule, and nothing else. everything sits inside `@media (
   :root { --gs-space: 1; }  /* motion.js reads this. absent flag, every spatial change cuts */
 
   [part="indicator"] { transition: transform var(--gs-motion-indicator) var(--gs-ease-move); }
-  gs-toast [part="slot"] { transition: transform var(--gs-motion-shift) var(--gs-ease-move); }
+  :where(gs-toast) [part="slot"] { transition: transform var(--gs-motion-shift) var(--gs-ease-move); }
   [data-gs-value] { transition: transform var(--gs-motion-value) var(--gs-ease-move); }
   [data-gs-still], [data-gs-still] * { transition: none; }
 
@@ -210,7 +210,7 @@ holds every spatial css rule, and nothing else. everything sits inside `@media (
 @keyframes gs-spatial-edge { from { opacity: 0; } to { opacity: 1; } }
 ```
 
-`.gs-scroll-edge` is the scroll-linked piece: a sticky header's hairline fades in over the first 24px of scroll, driven by the scroll timeline on the compositor. content itself never moves with scroll. `[data-gs-still]` is the per-subtree opt out.
+`.gs-scroll-edge` is the scroll-linked piece: a sticky header's hairline fades in over the first 24px of scroll, driven by the scroll timeline on the compositor. content itself never moves with scroll. `[data-gs-still]` is the per-subtree opt out. it wins on source order, so every transition rule above it keeps a specificity of one attribute: the toast slot rule wraps `gs-toast` in `:where()` for that reason.
 
 enters, exits and view entry are web animations in `motion.js`, never css. that keeps the palette's `open` attribute synchronous, gives exits a `finished` promise, and needs neither `@starting-style` nor `transition-behavior: allow-discrete` (both are newer in webkit, and a `display` transition would fail the property budget). view transitions are out for the same reason: the default group animates `width` and `height`.
 
