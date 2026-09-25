@@ -506,6 +506,25 @@ each matrix entry runs once unmeasured (jit, style caches, font and image decode
 
 run the clean control page 20 times on `ubuntu-latest` at the `m5` profile and record frame cpu p50 and p99, the tracing overhead inside `tdur`, stall counts, compositor drops and the calibration spread. that data decides what this doc can't know yet: whether "1 of 30" holds on github's runners, whether compositor drops can gate, and whether ci stays at dpr 2 (if software raster at dpr 2 makes the clean control unsteady, the ci profile drops to dpr 1 and the doc says so; joe's strict runs stay at dpr 2). the budgets don't move to absorb tracing overhead. if the clean control can't hold joe's numbers on ubuntu at all, that goes to joe before anything changes (open question 8).
 
+### 8.7 baseline results (plan task 1)
+
+measured on `ubuntu-latest` (linux x64), chromium 145.0.7632.6 headless shell, 20 runs of
+`test/feel/pages/clean.html` per dpr, run 36110576196 at 2219a88.
+
+| | dpr 2 | dpr 1 |
+|---|---|---|
+| runs with at most 1 of 30 frames missing a vsync | 20 of 20 | 20 of 20 |
+| frame cpu p50 / p99 / max (ms) | 0.8 / 9.3 / 9.4 | 0.7 / 9.3 / 9.5 |
+| frames over 16.7ms | 0 of 313 | 0 of 306 |
+| tracing overhead, calibration loop off / on p50 (ms) | 20.8 / 20.3 | 20.8 / 20.3 |
+| runner stalls (wall over 50ms, cpu under) | 0 | 0 |
+| compositor drops affecting smoothness | 14 in 14 of 20 runs | 11 in 11 of 20 runs |
+| calibration min / p50 / max (ms) | 20.6 / 20.8 / 21.2 | 20.6 / 20.8 / 27.5 |
+| inline span `compositeFailed` | 1056 | 1056 |
+
+decisions: the steadiness gate stays at 1 of 30. ci runs the feel project at dpr 2. compositor
+drops stay informational. `bad-composite.html` asserts bits 1056.
+
 ## 9. tests
 
 ### 9.1 the one existing test that changes
