@@ -6,7 +6,8 @@ export const TOKENS_PATH = new URL('../../tokens.json', import.meta.url);
 export const HEADER = 'generated from tokens.json by scripts/gen.js. do not edit';
 
 // spatial durations must land on a vsync at 60hz so no motion ends between two frames (spec 5.1).
-// listed by name: view, shift, indicator and value have no same-named ease entry to find them by
+// spec 5.5 finds them by their ease entry (hover excepted). view, shift, indicator and value have
+// no ease entry of their own, so they're named here and validateMotion checks the union (¬‿¬)
 export const SPATIAL_MOTION = Object.freeze(['enter', 'exit', 'view', 'shift', 'indicator', 'value']);
 const DEPRECATED = Object.freeze(['hover']);
 
@@ -44,7 +45,8 @@ export function validateMotion(t) {
   for (const k of Object.keys(step)) {
     if (Object.hasOwn(ease, k) && DEPRECATED.includes(k) === false) errors.push(`${k} is in both step and ease. a motion is an event or it is spatial, never both`);
   }
-  for (const k of SPATIAL_MOTION) {
+  const eased = Object.keys(motion).filter((k) => Object.hasOwn(ease, k) && DEPRECATED.includes(k) === false);
+  for (const k of new Set([...SPATIAL_MOTION, ...eased])) {
     if (Object.hasOwn(motion, k) && wholeFrames(msOf(motion[k])) === false) errors.push(`motion.${k} is ${motion[k]}, not a whole number of frames at 60hz. use round(frames * 1000 / 60)ms`);
   }
   if (errors.length > 0) throw new GsTokenError(`tokens.json motion is invalid:\n${errors.map((e) => `  ${e}`).join('\n')}`);

@@ -106,6 +106,8 @@ test('validateMotion rejects each bad shape and names it', () => {
   bad({ step: { enter: 'steps(3)' }, ease: { enter: 'ease-out' } }, /enter is in both step and ease/);
   bad({ ease: { enter: 'cubic-bezier(0.3, 1.4, 0.6, 1)' } }, /ease\.enter overshoots/);
   bad({ motion: { shift: '190ms' } }, /motion\.shift is 190ms, not a whole number of frames/);
+  bad({ motion: { drawer: '190ms' }, ease: { ...ok.ease, drawer: 'ease-out' } }, /motion\.drawer is 190ms/);
+  assert.doesNotThrow(() => validateMotion({ motion: { hover: '190ms' }, ease: { hover: 'ease-out' } }));
   assert.doesNotThrow(() => validateMotion({ ...ok, step: { hover: 'steps(2)' }, ease: { hover: 'ease-out' } }));
 });
 
