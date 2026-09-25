@@ -509,18 +509,26 @@ run the clean control page 20 times on `ubuntu-latest` at the `m5` profile and r
 ### 8.7 baseline results (plan task 1)
 
 measured on `ubuntu-latest` (linux x64), chromium 145.0.7632.6 headless shell, 20 runs of
-`test/feel/pages/clean.html` per dpr, run 36110576196 at 2219a88.
+`test/feel/pages/clean.html` per dpr, run 36112359837 at 5d69ed0. each run drives a rAF loop
+the way the probe will, so the frame rows count every vsync, and calibrate runs before
+`baseline:start`, so its task sits outside every frame.
 
 | | dpr 2 | dpr 1 |
 |---|---|---|
 | runs with at most 1 of 30 frames missing a vsync | 20 of 20 | 20 of 20 |
-| frame cpu p50 / p99 / max (ms) | 0.8 / 9.3 / 9.4 | 0.7 / 9.3 / 9.5 |
-| frames over 16.7ms | 0 of 313 | 0 of 306 |
-| tracing overhead, calibration loop off / on p50 (ms) | 20.8 / 20.3 | 20.8 / 20.3 |
+| frame cpu p50 / p99 / max (ms) | 0.5 / 9.3 / 9.7 | 0.5 / 9.2 / 9.8 |
+| frames over 16.7ms | 0 of 622 | 0 of 622 |
+| tracing overhead, calibration loop off / on p50 (ms) | 23.5 / 23.5 | 23.5 / 23.5 |
 | runner stalls (wall over 50ms, cpu under) | 0 | 0 |
-| compositor drops affecting smoothness | 14 in 14 of 20 runs | 11 in 11 of 20 runs |
-| calibration min / p50 / max (ms) | 20.6 / 20.8 / 21.2 | 20.6 / 20.8 / 27.5 |
+| compositor drops affecting smoothness | 20 in 20 of 20 runs | 20 in 20 of 20 runs |
+| calibration min / p50 / max (ms) | 23.4 / 23.5 / 23.6 | 23.4 / 23.5 / 23.6 |
 | inline span `compositeFailed` | 1056 | 1056 |
+
+the off / on row is wall time for one settled call each (calibrate repeats until two calls agree
+within 5%, so neither side pays for the jit or a cold clock). the p50 of on minus off is 0.1ms at
+both dprs. the first recording (run 36110576196 at 2219a88) compared a cold call with a warm one,
+drove no rAF loop and put calibrate inside the frame window, so its rows don't compare with these.
+its decisions came out the same.
 
 decisions: the steadiness gate stays at 1 of 30. ci runs the feel project at dpr 2. compositor
 drops stay informational. `bad-composite.html` asserts bits 1056.
