@@ -224,22 +224,117 @@ test('drawer: adopting rebuilt nodes mid flip keeps each one where it is', async
   expect(r.cEnd).toBe(0);
 });
 
-test('drawer: a helper that cancels one of its moves still leaves nothing attached once the rest land', async ({ page }) => {
-  const r = await page.evaluate(async () => {
+test('drawer: moves on the house curve, and a helper that takes one node over still lets the run land true with nothing attached', async ({ page }) => {
+  const r = await page.evaluate(async (book) => {
     const rows = [...document.getElementById('list').children];
     const d = window.motion.drawer({ height: 28 });
     d.play({ inner: rows[0], followers: [rows[1], rows[2]], open: false, from: 1 });
+    const cls = [rows[0], rows[1]].map((el) => el.getAnimations().map((a) => ({
+      id: a.id,
+      easing: a.effect.getTiming().easing,
+      duration: a.effect.getTiming().duration,
+      props: [...new Set(a.effect.getKeyframes().flatMap((f) => Object.keys(f)))].filter((k) => book.includes(k) === false).sort(),
+    })));
     for (const el of rows.slice(0, 3)) for (const a of el.getAnimations()) a.currentTime = 50;
     // flip's sweep cancels any gs-move:* on its targets, the drawer's included, and plays the row home
-    // from where the drawer left it
+    // from where the drawer left it. that takes one node over; it doesn't supersede the drawer
     window.motion.flip([rows[1]], () => {});
     const settled = await Promise.race([d.finished.then((v) => ({ v })), new Promise((res) => setTimeout(() => res('hung'), 2000))]);
     const ids = rows.slice(0, 3).map((el) => el.getAnimations().map((a) => a.id));
-    return { settled, running: d.running, progress: d.progress, ids, inner: getComputedStyle(rows[0]).transform };
-  });
-  expect(r.settled).toEqual({ v: false });
+    return { cls, settled, running: d.running, progress: d.progress, ids, inner: getComputedStyle(rows[0]).transform };
+  }, BOOK);
+  const move = [{ id: 'gs-move:drawer', easing: 'cubic-bezier(0.16, 1, 0.3, 1)', duration: 200, props: ['transform'] }];
+  expect(r.cls).toEqual([move, move]);
+  expect(r.settled).toEqual({ v: true });
   expect(r.running).toBe(false);
   expect(r.progress).toBe(0);
   expect(r.ids.map((xs) => xs.filter((id) => id === 'gs-move:drawer'))).toEqual([[], [], []]);
   expect(r.inner).toBe('none');
+});
+
+test('drawer: a reverse supersedes the play, so the play resolves false and the reverse true', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const rows = [...document.getElementById('list').children];
+    const d = window.motion.drawer({ height: 28 });
+    const first = d.play({ inner: rows[0], followers: [rows[1]], open: true, from: 0 });
+    for (const el of rows.slice(0, 2)) for (const a of el.getAnimations()) a.currentTime = 40;
+    const second = d.reverse();
+    return { first: await first, second: await second, left: rows.flatMap((el) => el.getAnimations()).length };
+  });
+  expect(r).toEqual({ first: false, second: true, left: 0 });
+});
+
+test('drawer: adopting after a helper took one node over keeps the drawer clock', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const yOf = (el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).m42;
+    const [a, b, c, e] = [...document.getElementById('list').children];
+    const d = window.motion.drawer({ height: 28 });
+    d.play({ inner: null, followers: [a, b], open: true, from: 0 });
+    for (const el of [a, b]) for (const x of el.getAnimations()) x.currentTime = 100;
+    const bBefore = yOf(b);
+    // flip takes a over: the drawer's first move is cancelled, its clock reads null from here on
+    window.motion.flip([a], () => {});
+    d.adopt({ inner: null, followers: [c, e] });
+    const drawerAt = e.getAnimations().filter((x) => x.id === 'gs-move:drawer').map((x) => x.currentTime);
+    return { bBefore, cAfter: yOf(c), eAfter: yOf(e), drawerAt };
+  });
+  expect(r.bBefore).toBeLessThan(-0.3);
+  expect(r.eAfter).toBeCloseTo(r.bBefore, 1);
+  expect(r.cAfter).toBeCloseTo(r.bBefore, 1);
+  expect(r.drawerAt).toHaveLength(1);
+  expect(r.drawerAt[0]).toBeCloseTo(100, 0);
+});
+
+test('drawer: a reverse after a helper took the first follower over turns around from the drawer clock, with no jump', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const topOf = (el) => el.getBoundingClientRect().top;
+    const rows = [...document.getElementById('list').children];
+    const [inner, f0, f1] = rows;
+    const d = window.motion.drawer({ height: 28 });
+    d.play({ inner, followers: [f0, f1], open: true, from: 0 });
+    for (const el of rows.slice(0, 3)) for (const a of el.getAnimations()) a.currentTime = 40;
+    window.motion.flip([f0], () => {});
+    for (const a of f0.getAnimations()) a.currentTime = 150;
+    const progress = d.progress;
+    const before = { inner: topOf(inner), f1: topOf(f1) };
+    // the caller's layout flip before a reverse to closed: the drawer leaves the flow, the rows
+    // below it move up by its height in layout
+    inner.style.position = 'absolute';
+    d.reverse();
+    return { progress, before, after: { inner: topOf(inner), f1: topOf(f1) } };
+  });
+  // 40ms into 200 on the move curve the drawer is 3/4 open, whatever f0's own flip reads
+  expect(r.progress).toBeGreaterThan(0.6);
+  expect(r.progress).toBeLessThan(0.9);
+  expect(r.after.inner).toBeCloseTo(r.before.inner, 0);
+  expect(r.after.f1).toBeCloseTo(r.before.f1, 0);
+});
+
+test('flip: a keyed rebuild that adopts the drawer inside mutate starts every fresh row where the old one was, on one move', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const list = document.getElementById('list');
+    const box = document.getElementById('box');
+    const rows = [...list.children];
+    for (const el of rows) el.dataset.key = el.textContent;
+    const d = window.motion.drawer({ height: 28 });
+    // the inner isn't a row, so flip never touches it and the drawer is still live inside mutate
+    d.play({ inner: box, followers: rows.slice(1), open: true, from: 0 });
+    for (const el of [box, ...rows]) for (const a of el.getAnimations()) a.currentTime = 40;
+    const was = rows.map((el) => el.getBoundingClientRect().top);
+    let fresh = [];
+    window.motion.flip(rows, () => {
+      fresh = rows.map((el) => Object.assign(document.createElement('div'), { className: 'row', textContent: el.textContent }));
+      for (const el of fresh) el.dataset.key = el.textContent;
+      list.replaceChildren(Object.assign(document.createElement('div'), { className: 'row', textContent: 'new' }), ...fresh);
+      d.adopt({ inner: box, followers: fresh.slice(1) });
+      return fresh;
+    }, { key: (el) => el.dataset.key });
+    const now = fresh.map((el) => el.getBoundingClientRect().top);
+    const ids = fresh.map((el) => el.getAnimations().map((a) => a.id));
+    return { was, now, ids, offset: was[1] - was[0] - 28 };
+  });
+  // the followers were mid drawer, a few px above their layout slot
+  expect(r.offset).toBeLessThan(-3);
+  for (const [i, top] of r.now.entries()) expect(top).toBeCloseTo(r.was[i], 0);
+  expect(r.ids).toEqual([['gs-move:flip'], ['gs-move:flip'], ['gs-move:flip'], ['gs-move:flip']]);
 });

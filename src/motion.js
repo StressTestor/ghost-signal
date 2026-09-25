@@ -139,10 +139,15 @@ export function flip(targets, mutate, { duration = 'shift', easing = 'move', key
     const full = parseMs(token(`--gs-motion-${duration}`));
     const curve = token(`--gs-ease-${easing}`) || 'linear';
     const moves = [];
-    for (const el of next) {
+    const els = [...next].filter((el) => before.has(keyOf(el)) && el.isConnected);
+    // a rebuild inside mutate can hand these nodes a move of their own (a drawer adopting them). it
+    // stops here, before any rect is read: `was` is where the eye last saw the row, and a move left
+    // running would skew `now` and stack under this one. a fresh node with no key keeps its enter
+    for (const el of els) for (const a of el.getAnimations().filter(isMove)) a.cancel();
+    const nows = els.map((el) => el.getBoundingClientRect());
+    for (const [i, el] of els.entries()) {
       const was = before.get(keyOf(el));
-      if (was === undefined || el.isConnected === false) continue;
-      const now = el.getBoundingClientRect();
+      const now = nows[i];
       const dx = was.left - now.left;
       const dy = was.top - now.top;
       if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
@@ -175,11 +180,15 @@ export function drawer({ height = 0, duration = 'shift', easing = 'move' } = {})
   let last = { inner: null, followers: [], from: 0 };
   let done = Promise.resolve(true);
 
-  const yOf = (el) => translateOf(getComputedStyle(el).transform).y;
+  // the drawer's own clock, never a node's transform: a flip can own any one node, and a carried
+  // offset skews the one it rides. every move shares one timing and its keyframes are linear in
+  // offset, so the eased progress getComputedTiming reports is the open fraction's share of the trip
+  const live = () => anims.find((a) => a.playState !== 'idle');
   const progress = () => {
-    if (anims.length === 0) return opening ? 1 : 0;
-    if (last.followers.length > 0) return drawerProgress(yOf(last.followers[0]), h, opening);
-    return last.inner === null ? (opening ? 1 : 0) : drawerProgress(yOf(last.inner), h, true);
+    const a = live();
+    if (a === undefined) return opening ? 1 : 0;
+    const e = a.effect.getComputedTiming().progress ?? 1;
+    return opening ? last.from + (1 - last.from) * e : last.from * (1 - e);
   };
 
   function start({ inner, followers, open, from, currentTime = 0 }) {
@@ -217,15 +226,18 @@ export function drawer({ height = 0, duration = 'shift', easing = 'move' } = {})
     if (inner !== null) ride(inner, -(1 - from) * h, open ? 0 : -h);
     for (const f of followers) ride(f, open ? -(1 - from) * h : from * h, 0);
     const mine = anims;
-    // settled, not all: a helper that cancels one of these (flip's sweep, slide's takeOver) must not
-    // strand the rest. they land, then every one is detached and progress reads the end state.
-    // left attached, a finished move holds its fill and outranks a later transition (task 15) >:[
-    done = Promise.allSettled(mine.map((a) => a.finished)).then((rs) => {
-      if (anims === mine) {
+    // settled, not all: a helper that cancels one of these (flip's sweep, slide's takeOver) owns that
+    // node now, and the rest still land. false means only that a later play, reverse or adopt
+    // replaced this run: a caller holding data-leaving until true would leave the detail overlaying
+    // the rows below on a foreign cancel. left attached, a finished move holds its fill and outranks
+    // a later transition (task 15) >:[
+    done = Promise.allSettled(mine.map((a) => a.finished)).then(() => {
+      const current = anims === mine;
+      if (current) {
         for (const a of mine) a.cancel();
         anims = [];
       }
-      return rs.every((r) => r.status === 'fulfilled');
+      return current;
     });
     return done;
   }
@@ -241,9 +253,12 @@ export function drawer({ height = 0, duration = 'shift', easing = 'move' } = {})
       return start({ inner: last.inner, followers: last.followers, open: opening === false, from: progress() });
     },
     // a rebuild mid motion (seance's 2hz live batch) re-attaches the motion to the new nodes at the same time
+    // the clock comes off a move still attached: one a helper cancelled reads null. with none left
+    // every node was taken over, and there's no motion to re-attach
     adopt({ inner = null, followers = [] } = {}) {
-      if (anims.length === 0) return done;
-      return start({ inner, followers, open: opening, from: last.from, currentTime: anims[0].currentTime ?? 0 });
+      const a = live();
+      if (a === undefined) return done;
+      return start({ inner, followers, open: opening, from: last.from, currentTime: a.currentTime ?? 0 });
     },
     get progress() { return progress(); },
     get running() { return anims.some((a) => a.playState === 'running'); },
