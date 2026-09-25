@@ -75,7 +75,9 @@ function judgeStep(budgets, run, s, out) {
     const busy = overFrames.some((f) => f.ts / 1000 - trace.offsetMs < b && f.end / 1000 - trace.offsetMs > a);
     if (busy === false) out.stalls.push({ step: ref, what: `a ${r1(b - a)}ms rAF gap with no cpu behind it` });
   }
-  const worst = worstInteraction(samples.events.filter((e) => e.startTime >= s.start && e.startTime <= s.end));
+  // input to paint belongs to s.input alone (spec 7.4): a PageDown scroll makes interactions too,
+  // and a scroll step doesn't get to fail a check its kind never runs (¬‿¬)
+  const worst = s.kind === 'input' ? worstInteraction(samples.events.filter((e) => e.startTime >= s.start && e.startTime <= s.end)) : null;
   let input = null;
   if (worst !== null) {
     input = {
@@ -215,6 +217,8 @@ function judgeComposites(samples, trace, out) {
 }
 
 export function evaluateRun(budgets, run, { mode = 'motion' } = {}) {
+  // zero steps means zero timing checks ran, and a harness that measured nothing doesn't pass (7.8)
+  if (run.samples.steps.length === 0) throw new GsFeelUnevaluable(`run ${run.index} recorded no steps. a scenario needs at least one s.input, s.event, s.scroll or s.idle`);
   const out = { deterministic: [], stalls: [], info: [], used: { shifts: new Set(), answers: new Set() } };
   const steps = run.samples.steps.map((s) => judgeStep(budgets, run, s, out));
   judgeShifts(budgets, run.samples, out);
@@ -255,13 +259,23 @@ function detailOf(step, check) {
   return step.answer;
 }
 
+// a median lines up the same step across runs. a step one run skipped would read as a 0, which
+// passes, so a missing measurement would quietly vote for green. they ALL show up or nobody folds XX
+function sameSteps(runs) {
+  const ids = (r) => r.steps.map((s) => s.index).join(',');
+  if (runs.some((r) => ids(r) !== ids(runs[0]))) {
+    throw new GsFeelUnevaluable(`runs recorded different steps (${runs.map((r) => `run ${r.index}: ${ids(r) || 'none'}`).join(', ')}), so their medians would compare something with nothing. steps() has to call the same steps in the same order every run`);
+  }
+}
+
 // with two runs that agree on every timing check, a third can't change the median (spec 8.5)
 export function needsThirdRun(budgets, runs) {
   if (runs.length !== 2) return false;
+  sameSteps(runs);
   const [a, b] = runs;
   return a.steps.some((s) => {
     const t = b.steps.find((x) => x.index === s.index);
-    return TIMING_CHECKS.some((c) => (valueOf(s, c) > budgets[c]) !== (t === undefined ? false : valueOf(t, c) > budgets[c]));
+    return TIMING_CHECKS.some((c) => (valueOf(s, c) > budgets[c]) !== (valueOf(t, c) > budgets[c]));
   });
 }
 
@@ -278,6 +292,7 @@ function identity(v) {
 
 export function combineRuns(budgets, runs, meta) {
   if (runs.length === 0) throw new GsFeelUnevaluable('no measured run finished');
+  sameSteps(runs);
   const violations = [];
   const byKey = new Map();
   for (const r of runs) {
@@ -296,10 +311,7 @@ export function combineRuns(budgets, runs, meta) {
   for (const step of runs[0].steps) {
     for (const check of TIMING_CHECKS) {
       const limit = budgets[check];
-      const values = runs.map((r) => {
-        const s = r.steps.find((x) => x.index === step.index);
-        return { run: r.index, value: s === undefined ? 0 : valueOf(s, check) };
-      });
+      const values = runs.map((r) => ({ run: r.index, value: valueOf(r.steps.find((x) => x.index === step.index), check) }));
       const sorted = values.map((v) => v.value).sort((a, b) => a - b);
       const median = sorted[Math.floor((sorted.length - 1) / 2)];
       const over = values.filter((v) => v.value > limit);

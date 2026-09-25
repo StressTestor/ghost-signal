@@ -112,6 +112,13 @@ test('a rAF gap with no cpu behind it is a stall, not a frame violation', () => 
   assert.match(report.stalls[0].what, /43.3ms rAF gap with no cpu behind it/);
 });
 
+test('input is judged on input steps only: a keyboard scroll with a 70ms interaction has no input check', () => {
+  const entry = { name: 'keydown', interactionId: 9, startTime: 1005, duration: 70, processingStart: 1006, processingEnd: 1010 };
+  const report = fold([build({ steps: [{ kind: 'scroll' }], events: [entry] })], { runsPlanned: 1 });
+  assert.deepEqual(checks(report), []);
+  assert.equal(report.runs[0].steps[0].input, null);
+});
+
 test('input: the worst entry of an interaction over 50 fails, so 56 fails and 48 passes', () => {
   const entry = (duration) => ({ name: 'click', interactionId: 5, startTime: 1005, duration, processingStart: 1006, processingEnd: 1050 });
   const slow = fold([build({ steps: [{ kind: 'input' }], events: [entry(48), { ...entry(56), name: 'pointerup' }] })], { runsPlanned: 1 });
@@ -133,9 +140,13 @@ test('answer: nothing is silent, late is slow, and an exemption must be used', (
 });
 
 test('shifts: recent input passes, before fcp is ignored, before the first step is load', () => {
-  const run = build({ shifts: [shift({ hadRecentInput: true }), shift({ startTime: 40 }), shift({ startTime: 400 }), shift({ startTime: 1100 })] });
+  // the pre-fcp shift gets its own source: sharing div#list with the load shift, the fold would
+  // merge the two and the cutoff could vanish without a test noticing
+  const early = shift({ startTime: 40, sources: [{ path: 'div#early', allowedBy: null, previousRect: { x: 0, y: 0 }, currentRect: { x: 0, y: 28 } }] });
+  const run = build({ shifts: [shift({ hadRecentInput: true }), early, shift({ startTime: 400 }), shift({ startTime: 1100 })] });
   const report = fold([run], { runsPlanned: 1 });
   assert.deepEqual(report.violations.map((v) => [v.check, v.step.name]), [['shift', 'load'], ['shift', 'step 0']]);
+  assert.equal(report.violations.some((v) => v.data.sources.some((x) => x.path === 'div#early')), false);
 });
 
 test('allowShift: a used exemption passes, a declared and unused one fails', () => {
@@ -230,4 +241,21 @@ test('apparatus: zero frames, an untrusted input, or counts that never grew are 
   unevaluable(build({ steps: [{ frames: [] }] }), /zero animation frames/);
   unevaluable(build({ steps: [{ kind: 'input', trusted: { pointerdown: 0, keydown: 0 } }] }), /no trusted pointerdown or keydown/);
   unevaluable(build({ steps: [{ kind: 'input', countsAfter: { pointerdown: 0, keydown: 0 } }] }), /no trusted pointerdown or keydown/);
+});
+
+test('apparatus: a run that recorded no steps is unevaluable, not a pass', () => {
+  assert.throws(() => evaluateRun(B, build({ steps: [] }), { mode: 'motion' }), (e) => e instanceof GsFeelUnevaluable && /recorded no steps/.test(e.message));
+});
+
+test('runs that recorded different steps are unevaluable, never a median of something and nothing', () => {
+  const heavy = { tasks: [{ at: 100, dur: 30 }] };
+  const e = (r) => evaluateRun(B, r, { mode: 'motion' });
+  const unevaluable = (fn) => assert.throws(fn, (err) => err instanceof GsFeelUnevaluable && /different steps/.test(err.message));
+  // run 1 lost step 1 that runs 2 and 3 both fail
+  const lost = [build({ steps: [{}] }), build({ index: 2, steps: [{}, heavy] }), build({ index: 3, steps: [{}, heavy] })];
+  unevaluable(() => fold(lost));
+  // run 2 lacks the step run 1 failed
+  const missing = [build({ steps: [{}, heavy] }), build({ index: 2, steps: [{}] })];
+  unevaluable(() => fold(missing, { runsPlanned: 2 }));
+  unevaluable(() => needsThirdRun(B, missing.map(e)));
 });
