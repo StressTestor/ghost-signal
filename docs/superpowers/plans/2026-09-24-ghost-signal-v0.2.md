@@ -6344,7 +6344,7 @@ Expected: every gate green.
 
 ### task 17: the indicator
 
-spec 6.2 (`indicator`), 9.3 (`motion.spec.js`: the tab indicator retargets mid slide with no jump). one sliding bar for tabs, nav, sidebars and the palette highlight.
+spec 6.2 (`indicator`, including its ResizeObserver), 9.3 (`motion.spec.js`: the tab indicator retargets mid slide with no jump). one sliding bar for tabs, nav, sidebars and the palette highlight.
 
 **Files:**
 - Modify: `src/motion.js` (append `indicator`)
@@ -6353,7 +6353,7 @@ spec 6.2 (`indicator`), 9.3 (`motion.spec.js`: the tab indicator retargets mid s
 
 **Interfaces:**
 - Consumes: nothing beyond task 15.
-- Produces: `indicator(container, { selector = '[aria-current="page"], [aria-current="true"], [aria-selected="true"]', axis = 'x' })` prepends `<span part="indicator" aria-hidden="true" data-axis="x|y">` to a `position: relative` container, places it on the first match through `translateX(left) scaleX(width / 100)` (axis x) or `translateY(top) scaleY(height / 100)` (axis y), follows `aria-current` / `aria-selected` / child changes (MutationObserver) and size changes (ResizeObserver), hides itself (`hidden`) when nothing matches, and places without a transition whenever it wasn't placed before (first mount, or after the container had no size). returns `{ update(), disconnect() }`. the slide itself is the css transition in `motion.css`, so a held arrow key retargets it natively.
+- Produces: `indicator(container, { selector = '[aria-current="page"], [aria-current="true"], [aria-selected="true"]', axis = 'x' })` prepends `<span part="indicator" aria-hidden="true" data-axis="x|y">` to a `position: relative` container, places it on the first match through `translateX(left) scaleX(width / 100)` (axis x) or `translateY(top) scaleY(height / 100)` (axis y), follows `aria-current` / `aria-selected` / child changes (MutationObserver) and size changes of the container and each of its element children at border-box (ResizeObserver, rebuilt when the container's own children change, so a tab that grows inside a full-width nav still moves the bar), hides itself (`hidden`) when nothing matches, and places without a transition whenever it wasn't placed before (first mount, or after the container had no size). returns `{ update(), disconnect() }`. the slide itself is the css transition in `motion.css`, so a held arrow key retargets it natively.
 
 - [ ] **Step 1: write the failing tests**
 
@@ -6405,24 +6405,93 @@ test('the indicator retargets mid slide from where it is, with no jump', async (
       const out = [];
       const t0 = performance.now();
       const f = () => {
-        out.push(x());
+        out.push({ t: performance.now(), x: x() });
         if (performance.now() - t0 < ms) requestAnimationFrame(f);
         else resolve(out);
       };
       requestAnimationFrame(f);
     });
-    pick(c);
+    // the reference covers the same 56px the retarget does. an a to c reference has a first frame
+    // of about 70px, which is bigger than any cut between neighbours, so it would wave a cut through
+    pick(b);
     const fresh = await series(250);
     pick(a);
     await series(250);
     pick(c);
-    setTimeout(() => pick(b), 50);
+    // 30ms into a 117ms slide the bar sits 65 to 90% of the way to c, by frame alignment. 50ms sat
+    // at 95%, 5px short of c, where one slow frame turns the retarget into a fresh c to b slide
+    let start = NaN;
+    let turnAt = Infinity;
+    setTimeout(() => {
+      start = x();
+      turnAt = performance.now();
+      pick(b);
+    }, 30);
     const turned = await series(300);
-    return { fresh, turned, target: b.offsetLeft };
+    return { fresh, turned, start, turnAt, a: a.offsetLeft, b: b.offsetLeft, c: c.offsetLeft };
   });
-  const steps = (xs) => xs.slice(1).map((v, i) => Math.abs(v - xs[i]));
-  expect(Math.max(...steps(r.turned))).toBeLessThanOrEqual(Math.max(...steps(r.fresh)) + 2);
-  expect(r.turned.at(-1)).toBeCloseTo(r.target, 0);
+  const steps = (xs) => xs.slice(1).map((v, i) => Math.abs(v.x - xs[i].x));
+  const after = r.turned.filter((s) => s.t >= r.turnAt);
+  const before = r.turned.filter((s) => s.t < r.turnAt);
+  // the turn happened mid slide, from where the bar was
+  expect(r.start).toBeGreaterThan(r.a);
+  expect(r.start).toBeLessThan(r.c);
+  // no jump across the turn: every step from the last frame before it is within a fresh run's steepest
+  expect(Math.max(...steps([...before.slice(-1), ...after]))).toBeLessThanOrEqual(Math.max(...steps(r.fresh)) + 2);
+  // and it travelled: a cut lands on b the next frame with nothing in between
+  const lo = Math.min(r.start, r.b);
+  const hi = Math.max(r.start, r.b);
+  expect(after.filter((s) => s.x > lo && s.x < hi).length).toBeGreaterThanOrEqual(2);
+  expect(r.turned.at(-1).x).toBeCloseTo(r.b, 0);
+});
+
+test('the indicator follows a tab that changes size while the container keeps its size', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const tabs = document.getElementById('tabs');
+    window.motion.indicator(tabs);
+    const bar = tabs.querySelector('[part="indicator"]');
+    const [a, b] = tabs.querySelectorAll('button');
+    a.removeAttribute('aria-current');
+    b.setAttribute('aria-current', 'page');
+    const want = () => `translateX(${b.offsetLeft}px) scaleX(${b.offsetWidth / 100})`;
+    const settle = () => new Promise((resolve) => {
+      const t0 = performance.now();
+      const f = () => {
+        if (bar.style.transform === want() || performance.now() - t0 > 500) resolve();
+        else requestAnimationFrame(f);
+      };
+      requestAnimationFrame(f);
+    });
+    await settle();
+    // observe() queues one first notification, delivered on the next frame or so. a resize before
+    // it lands gets placed by that notification whether anything watches the tab or not
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(res))));
+    const before = { w: tabs.offsetWidth, h: tabs.offsetHeight, transform: bar.style.transform };
+    a.style.paddingLeft = '60px'; // a class flip or a count badge on an earlier tab does the same
+    await settle();
+    const grown = { w: tabs.offsetWidth, h: tabs.offsetHeight, transform: bar.style.transform, want: want() };
+    // a tab added later is watched too, not only the ones there at mount
+    const added = document.createElement('button');
+    added.textContent = 'new';
+    tabs.insertBefore(added, b);
+    await settle();
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(res))));
+    const inserted = bar.style.transform;
+    added.style.paddingLeft = '40px';
+    await settle();
+    return {
+      before,
+      grown,
+      inserted,
+      late: { w: tabs.offsetWidth, h: tabs.offsetHeight, transform: bar.style.transform, want: want() },
+    };
+  });
+  expect({ w: r.grown.w, h: r.grown.h }).toEqual({ w: r.before.w, h: r.before.h });
+  expect(r.grown.transform).not.toBe(r.before.transform);
+  expect(r.grown.transform).toBe(r.grown.want);
+  expect({ w: r.late.w, h: r.late.h }).toEqual({ w: r.before.w, h: r.before.h });
+  expect(r.late.transform).not.toBe(r.inserted);
+  expect(r.late.transform).toBe(r.late.want);
 });
 ```
 
@@ -6463,10 +6532,21 @@ export function indicator(container, { selector = '[aria-current="page"], [aria-
     }
     if (bar.style.transform !== t) bar.style.transform = t;
   };
-  const mo = new MutationObserver(place);
+  // a tab can grow while a full-width nav keeps its size (a count badge, a class flip), and that
+  // moves every tab after it. so the watch covers each child too, at border-box: content-box never
+  // hears a padding change. the child list is rebuilt whenever the container's own children change
+  const ro = new ResizeObserver(() => place());
+  const watch = () => {
+    ro.disconnect();
+    ro.observe(container);
+    for (const el of container.children) if (el !== bar) ro.observe(el, { box: 'border-box' });
+  };
+  const mo = new MutationObserver((records) => {
+    if (records.some((m) => m.type === 'childList' && m.target === container)) watch();
+    place();
+  });
   mo.observe(container, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-current', 'aria-selected'] });
-  const ro = new ResizeObserver(place);
-  ro.observe(container);
+  watch();
   place();
   return {
     update: place,

@@ -420,22 +420,91 @@ test('the indicator retargets mid slide from where it is, with no jump', async (
       const out = [];
       const t0 = performance.now();
       const f = () => {
-        out.push(x());
+        out.push({ t: performance.now(), x: x() });
         if (performance.now() - t0 < ms) requestAnimationFrame(f);
         else resolve(out);
       };
       requestAnimationFrame(f);
     });
-    pick(c);
+    // the reference covers the same 56px the retarget does. an a to c reference has a first frame
+    // of about 70px, which is bigger than any cut between neighbours, so it would wave a cut through
+    pick(b);
     const fresh = await series(250);
     pick(a);
     await series(250);
     pick(c);
-    setTimeout(() => pick(b), 50);
+    // 30ms into a 117ms slide the bar sits 65 to 90% of the way to c, by frame alignment. 50ms sat
+    // at 95%, 5px short of c, where one slow frame turns the retarget into a fresh c to b slide
+    let start = NaN;
+    let turnAt = Infinity;
+    setTimeout(() => {
+      start = x();
+      turnAt = performance.now();
+      pick(b);
+    }, 30);
     const turned = await series(300);
-    return { fresh, turned, target: b.offsetLeft };
+    return { fresh, turned, start, turnAt, a: a.offsetLeft, b: b.offsetLeft, c: c.offsetLeft };
   });
-  const steps = (xs) => xs.slice(1).map((v, i) => Math.abs(v - xs[i]));
-  expect(Math.max(...steps(r.turned))).toBeLessThanOrEqual(Math.max(...steps(r.fresh)) + 2);
-  expect(r.turned.at(-1)).toBeCloseTo(r.target, 0);
+  const steps = (xs) => xs.slice(1).map((v, i) => Math.abs(v.x - xs[i].x));
+  const after = r.turned.filter((s) => s.t >= r.turnAt);
+  const before = r.turned.filter((s) => s.t < r.turnAt);
+  // the turn happened mid slide, from where the bar was
+  expect(r.start).toBeGreaterThan(r.a);
+  expect(r.start).toBeLessThan(r.c);
+  // no jump across the turn: every step from the last frame before it is within a fresh run's steepest
+  expect(Math.max(...steps([...before.slice(-1), ...after]))).toBeLessThanOrEqual(Math.max(...steps(r.fresh)) + 2);
+  // and it travelled: a cut lands on b the next frame with nothing in between
+  const lo = Math.min(r.start, r.b);
+  const hi = Math.max(r.start, r.b);
+  expect(after.filter((s) => s.x > lo && s.x < hi).length).toBeGreaterThanOrEqual(2);
+  expect(r.turned.at(-1).x).toBeCloseTo(r.b, 0);
+});
+
+test('the indicator follows a tab that changes size while the container keeps its size', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const tabs = document.getElementById('tabs');
+    window.motion.indicator(tabs);
+    const bar = tabs.querySelector('[part="indicator"]');
+    const [a, b] = tabs.querySelectorAll('button');
+    a.removeAttribute('aria-current');
+    b.setAttribute('aria-current', 'page');
+    const want = () => `translateX(${b.offsetLeft}px) scaleX(${b.offsetWidth / 100})`;
+    const settle = () => new Promise((resolve) => {
+      const t0 = performance.now();
+      const f = () => {
+        if (bar.style.transform === want() || performance.now() - t0 > 500) resolve();
+        else requestAnimationFrame(f);
+      };
+      requestAnimationFrame(f);
+    });
+    await settle();
+    // observe() queues one first notification, delivered on the next frame or so. a resize before
+    // it lands gets placed by that notification whether anything watches the tab or not
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(res))));
+    const before = { w: tabs.offsetWidth, h: tabs.offsetHeight, transform: bar.style.transform };
+    a.style.paddingLeft = '60px'; // a class flip or a count badge on an earlier tab does the same
+    await settle();
+    const grown = { w: tabs.offsetWidth, h: tabs.offsetHeight, transform: bar.style.transform, want: want() };
+    // a tab added later is watched too, not only the ones there at mount
+    const added = document.createElement('button');
+    added.textContent = 'new';
+    tabs.insertBefore(added, b);
+    await settle();
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(res))));
+    const inserted = bar.style.transform;
+    added.style.paddingLeft = '40px';
+    await settle();
+    return {
+      before,
+      grown,
+      inserted,
+      late: { w: tabs.offsetWidth, h: tabs.offsetHeight, transform: bar.style.transform, want: want() },
+    };
+  });
+  expect({ w: r.grown.w, h: r.grown.h }).toEqual({ w: r.before.w, h: r.before.h });
+  expect(r.grown.transform).not.toBe(r.before.transform);
+  expect(r.grown.transform).toBe(r.grown.want);
+  expect({ w: r.late.w, h: r.late.h }).toEqual({ w: r.before.w, h: r.before.h });
+  expect(r.late.transform).not.toBe(r.inserted);
+  expect(r.late.transform).toBe(r.late.want);
 });

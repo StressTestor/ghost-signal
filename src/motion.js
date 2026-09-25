@@ -321,10 +321,21 @@ export function indicator(container, { selector = '[aria-current="page"], [aria-
     }
     if (bar.style.transform !== t) bar.style.transform = t;
   };
-  const mo = new MutationObserver(place);
+  // a tab can grow while a full-width nav keeps its size (a count badge, a class flip), and that
+  // moves every tab after it. so the watch covers each child too, at border-box: content-box never
+  // hears a padding change. the child list is rebuilt whenever the container's own children change
+  const ro = new ResizeObserver(() => place());
+  const watch = () => {
+    ro.disconnect();
+    ro.observe(container);
+    for (const el of container.children) if (el !== bar) ro.observe(el, { box: 'border-box' });
+  };
+  const mo = new MutationObserver((records) => {
+    if (records.some((m) => m.type === 'childList' && m.target === container)) watch();
+    place();
+  });
   mo.observe(container, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-current', 'aria-selected'] });
-  const ro = new ResizeObserver(place);
-  ro.observe(container);
+  watch();
   place();
   return {
     update: place,
