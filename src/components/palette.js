@@ -78,6 +78,7 @@ export class GsPalette extends Base {
   }
 
   open() {
+    this.inert = false;
     this.removeAttribute('data-leaving');
     this.setAttribute('open', '');
     this.#input.value = '';
@@ -91,10 +92,17 @@ export class GsPalette extends Base {
   close() {
     if (this.hasAttribute('open') === false) return;
     this.removeAttribute('open');
+    // display: none used to drop focus for free. a leaving palette stays displayed, so drop it by
+    // hand and go inert, or a second enter inside the exit runs the command twice >:[
+    this.inert = true;
+    if (this.contains(document.activeElement)) document.activeElement.blur();
     // displayed through the exit, then gone. a reopen takes the exit over and keeps it open
     this.setAttribute('data-leaving', '');
     Promise.all([exit(this.#box, { to: 'above' }), exit(this.#overlay, { distance: 0 })]).then(([done]) => {
-      if (done && this.hasAttribute('open') === false) this.removeAttribute('data-leaving');
+      if (done && this.hasAttribute('open') === false) {
+        this.removeAttribute('data-leaving');
+        this.inert = false;
+      }
     });
   }
 

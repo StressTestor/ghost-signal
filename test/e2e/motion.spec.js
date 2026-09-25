@@ -664,3 +664,93 @@ test('glitch 0 still slides the palette in', async ({ page }) => {
   });
   expect(ids).toEqual(['gs-move:enter']);
 });
+
+// the exit is 100ms and a key press is a round trip, so a slow runner could land the second key
+// after the exit and pass for nothing. stretch the exit so every second key lands inside it, and
+// read data-leaving after it to prove it did
+const slowExit = (page) => page.addStyleTag({ content: ':root { --gs-motion-exit: 1000ms !important; }' });
+const countCommands = (page) => page.evaluate(() => {
+  window.__commands = [];
+  document.addEventListener('gs-command', (e) => window.__commands.push(e.detail.id));
+});
+const countYes = (page) => page.evaluate(() => {
+  window.__yes = 0;
+  document.getElementById('yes').addEventListener('click', () => { window.__yes += 1; });
+});
+const focusOf = (page) => page.evaluate(() => document.activeElement.id || document.activeElement.tagName);
+
+test('a key pressed while the palette leaves reaches nothing: escape then enter runs no command', async ({ page }) => {
+  await slowExit(page);
+  await countCommands(page);
+  await page.keyboard.press('Control+k');
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Escape');
+  expect(await focusOf(page)).toBe('BODY');
+  await page.keyboard.press('a');
+  await page.keyboard.press('Enter');
+  const r = await page.evaluate(() => {
+    const p = document.getElementById('p');
+    return { leaving: p.hasAttribute('data-leaving'), value: p.querySelector('[part="input"]').value, rows: p.querySelectorAll('[part="row"]').length };
+  });
+  expect(r).toEqual({ leaving: true, value: '', rows: 3 });
+  expect(await page.evaluate(() => window.__commands)).toEqual([]);
+});
+
+test('a double enter on the palette runs the command once', async ({ page }) => {
+  await slowExit(page);
+  await countCommands(page);
+  await page.keyboard.press('Control+k');
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  expect(await page.locator('#p').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
+  expect(await focusOf(page)).toBe('BODY');
+  expect(await page.evaluate(() => window.__commands)).toEqual(['probe.ping']);
+});
+
+test('a key pressed while the window leaves reaches nothing: escape then enter never clicks yes', async ({ page }) => {
+  await slowExit(page);
+  await countYes(page);
+  await page.evaluate(() => document.getElementById('w').open());
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Enter');
+  expect(await page.locator('#w').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
+  expect(await focusOf(page)).toBe('BODY');
+  expect(await page.evaluate(() => window.__yes)).toBe(0);
+});
+
+test('tab cannot walk back into a leaving window', async ({ page }) => {
+  await slowExit(page);
+  await countYes(page);
+  await page.evaluate(() => document.getElementById('w').open());
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Escape');
+  // the blur leaves chromium's tab starting point on #yes, so shift+tab walks to the next control
+  // back, still inside the window while it's displayed. an inert window has none to offer
+  await page.keyboard.press('Shift+Tab');
+  expect(await page.evaluate(() => document.getElementById('w').contains(document.activeElement))).toBe(false);
+  await page.keyboard.press('Enter');
+  expect(await page.locator('#w').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
+  expect(await page.evaluate(() => window.__yes)).toBe(0);
+});
+
+for (const [when, settle] of [['after the palette is gone', true], ['while the palette still leaves', false]]) {
+  test(`a window opened from a palette command, dismissed ${when}, takes no enter`, async ({ page }) => {
+    await slowExit(page);
+    await countCommands(page);
+    await countYes(page);
+    await page.evaluate(() => document.addEventListener('gs-command', () => document.getElementById('w').open()));
+    await page.keyboard.press('Control+k');
+    await page.waitForTimeout(250);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#yes')).toBeFocused();
+    if (settle) await expect(page.locator('#p')).toBeHidden();
+    else expect(await page.locator('#p').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Enter');
+    expect(await page.locator('#w').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
+    expect(await focusOf(page)).toBe('BODY');
+    expect(await page.evaluate(() => ({ yes: window.__yes, commands: window.__commands }))).toEqual({ yes: 0, commands: ['probe.ping'] });
+  });
+}

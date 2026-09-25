@@ -6648,7 +6648,7 @@ spec 4.1 (the cmd+k palette row), 6.3 (overlay centering, `data-leaving`, palett
 
 **Interfaces:**
 - Consumes: `enter`, `exit`, `indicator` (tasks 15, 17).
-- Produces: `gs-palette.open()` sets `open` synchronously, focuses the input before any motion, then enters `[part="box"]` from above (distance enter) and fades `[part="overlay"]` in. `close()` removes `open` synchronously, sets `data-leaving` for the exit, and clears it when the exit finishes (not if a reopen took the exit over). the highlight is `indicator(list, { axis: 'y', selector: '[aria-selected="true"]' })`, and `refresh()` removes only row elements so the indicator survives filtering. `gs-window` does the same on `[part="frame"]` and `[part="backdrop"]` through its `open` attribute. public api unchanged.
+- Produces: `gs-palette.open()` sets `open` synchronously, focuses the input before any motion, then enters `[part="box"]` from above (distance enter) and fades `[part="overlay"]` in. `close()` removes `open` synchronously, goes `inert` and blurs whatever it held focused (display: none used to do both for free), sets `data-leaving` for the exit, and clears both when the exit finishes (not if a reopen took the exit over). the highlight is `indicator(list, { axis: 'y', selector: '[aria-selected="true"]' })`, and `refresh()` removes only row elements so the indicator survives filtering. `gs-window` does the same on `[part="frame"]` and `[part="backdrop"]` through its `open` attribute, and after restoring focus it blurs anything still focused inside the frame. no key pressed during an exit reaches the leaving overlay. public api unchanged.
 
 - [ ] **Step 1: write the failing tests**
 
@@ -6782,6 +6782,96 @@ test('glitch 0 still slides the palette in', async ({ page }) => {
   });
   expect(ids).toEqual(['gs-move:enter']);
 });
+
+// the exit is 100ms and a key press is a round trip, so a slow runner could land the second key
+// after the exit and pass for nothing. stretch the exit so every second key lands inside it, and
+// read data-leaving after it to prove it did
+const slowExit = (page) => page.addStyleTag({ content: ':root { --gs-motion-exit: 1000ms !important; }' });
+const countCommands = (page) => page.evaluate(() => {
+  window.__commands = [];
+  document.addEventListener('gs-command', (e) => window.__commands.push(e.detail.id));
+});
+const countYes = (page) => page.evaluate(() => {
+  window.__yes = 0;
+  document.getElementById('yes').addEventListener('click', () => { window.__yes += 1; });
+});
+const focusOf = (page) => page.evaluate(() => document.activeElement.id || document.activeElement.tagName);
+
+test('a key pressed while the palette leaves reaches nothing: escape then enter runs no command', async ({ page }) => {
+  await slowExit(page);
+  await countCommands(page);
+  await page.keyboard.press('Control+k');
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Escape');
+  expect(await focusOf(page)).toBe('BODY');
+  await page.keyboard.press('a');
+  await page.keyboard.press('Enter');
+  const r = await page.evaluate(() => {
+    const p = document.getElementById('p');
+    return { leaving: p.hasAttribute('data-leaving'), value: p.querySelector('[part="input"]').value, rows: p.querySelectorAll('[part="row"]').length };
+  });
+  expect(r).toEqual({ leaving: true, value: '', rows: 3 });
+  expect(await page.evaluate(() => window.__commands)).toEqual([]);
+});
+
+test('a double enter on the palette runs the command once', async ({ page }) => {
+  await slowExit(page);
+  await countCommands(page);
+  await page.keyboard.press('Control+k');
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  expect(await page.locator('#p').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
+  expect(await focusOf(page)).toBe('BODY');
+  expect(await page.evaluate(() => window.__commands)).toEqual(['probe.ping']);
+});
+
+test('a key pressed while the window leaves reaches nothing: escape then enter never clicks yes', async ({ page }) => {
+  await slowExit(page);
+  await countYes(page);
+  await page.evaluate(() => document.getElementById('w').open());
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Enter');
+  expect(await page.locator('#w').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
+  expect(await focusOf(page)).toBe('BODY');
+  expect(await page.evaluate(() => window.__yes)).toBe(0);
+});
+
+test('tab cannot walk back into a leaving window', async ({ page }) => {
+  await slowExit(page);
+  await countYes(page);
+  await page.evaluate(() => document.getElementById('w').open());
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Escape');
+  // the blur leaves chromium's tab starting point on #yes, so shift+tab walks to the next control
+  // back, still inside the window while it's displayed. an inert window has none to offer
+  await page.keyboard.press('Shift+Tab');
+  expect(await page.evaluate(() => document.getElementById('w').contains(document.activeElement))).toBe(false);
+  await page.keyboard.press('Enter');
+  expect(await page.locator('#w').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
+  expect(await page.evaluate(() => window.__yes)).toBe(0);
+});
+
+for (const [when, settle] of [['after the palette is gone', true], ['while the palette still leaves', false]]) {
+  test(`a window opened from a palette command, dismissed ${when}, takes no enter`, async ({ page }) => {
+    await slowExit(page);
+    await countCommands(page);
+    await countYes(page);
+    await page.evaluate(() => document.addEventListener('gs-command', () => document.getElementById('w').open()));
+    await page.keyboard.press('Control+k');
+    await page.waitForTimeout(250);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#yes')).toBeFocused();
+    if (settle) await expect(page.locator('#p')).toBeHidden();
+    else expect(await page.locator('#p').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Enter');
+    expect(await page.locator('#w').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(true);
+    expect(await focusOf(page)).toBe('BODY');
+    expect(await page.evaluate(() => ({ yes: window.__yes, commands: window.__commands }))).toEqual({ yes: 0, commands: ['probe.ping'] });
+  });
+}
 ```
 
 and inside the existing `test.describe('reduced motion', ...)` block in `motion.spec.js`, add:
@@ -6804,7 +6894,7 @@ and inside the existing `test.describe('reduced motion', ...)` block in `motion.
 ```
 
 Run: `npx playwright test --project=chromium test/e2e/motion.spec.js`
-Expected: FAIL on the palette and window tests (no `gs-move:enter` on the box, no `data-leaving`).
+Expected: FAIL on the palette and window tests (no `gs-move:enter` on the box, no `data-leaving`). the key-leak tests fail too: v0.1 has no exit, so the exit-length check after the second key is what fails there. against the step 2 and 3 code without the blur and `inert` lines, they fail on focus (`INPUT` or `yes` instead of `BODY`) and a command or a yes that runs twice.
 
 - [ ] **Step 2: palette.js**
 
@@ -6819,6 +6909,7 @@ replace `open()` and `close()`:
 
 ```js
   open() {
+    this.inert = false;
     this.removeAttribute('data-leaving');
     this.setAttribute('open', '');
     this.#input.value = '';
@@ -6832,10 +6923,17 @@ replace `open()` and `close()`:
   close() {
     if (this.hasAttribute('open') === false) return;
     this.removeAttribute('open');
+    // display: none used to drop focus for free. a leaving palette stays displayed, so drop it by
+    // hand and go inert, or a second enter inside the exit runs the command twice >:[
+    this.inert = true;
+    if (this.contains(document.activeElement)) document.activeElement.blur();
     // displayed through the exit, then gone. a reopen takes the exit over and keeps it open
     this.setAttribute('data-leaving', '');
     Promise.all([exit(this.#box, { to: 'above' }), exit(this.#overlay, { distance: 0 })]).then(([done]) => {
-      if (done && this.hasAttribute('open') === false) this.removeAttribute('data-leaving');
+      if (done && this.hasAttribute('open') === false) {
+        this.removeAttribute('data-leaving');
+        this.inert = false;
+      }
     });
   }
 ```
@@ -6860,6 +6958,7 @@ add `import { enter, exit } from '../motion.js';`, a field `#backdrop = null;`, 
 
 ```js
   #activate() {
+    this.inert = false;
     this.removeAttribute('data-leaving');
     this.#restore = document.activeElement;
     document.addEventListener('keydown', this.#onKey);
@@ -6872,11 +6971,19 @@ add `import { enter, exit } from '../motion.js';`, a field `#backdrop = null;`, 
   #deactivate() {
     document.removeEventListener('keydown', this.#onKey);
     this.setAttribute('data-leaving', '');
+    // a leaving window is still displayed, so its buttons still take keys unless it goes inert
+    this.inert = true;
     Promise.all([exit(this.#frame, { to: 'above' }), exit(this.#backdrop, { distance: 0 })]).then(([done]) => {
-      if (done && this.hasAttribute('open') === false) this.removeAttribute('data-leaving');
+      if (done && this.hasAttribute('open') === false) {
+        this.removeAttribute('data-leaving');
+        this.inert = false;
+      }
     });
     this.dispatchEvent(new CustomEvent('gs-close', { bubbles: true }));
     if (this.#restore !== null && typeof this.#restore.focus === 'function') this.#restore.focus();
+    // a restore target that can't take focus (body, a palette input that already left) leaves it on
+    // the frame, and escape then enter would answer yes to the thing you just dismissed XX
+    if (this.hasAttribute('open') === false && this.#frame.contains(document.activeElement)) document.activeElement.blur();
     this.#restore = null;
   }
 ```

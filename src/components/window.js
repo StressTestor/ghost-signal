@@ -85,6 +85,7 @@ export class GsWindow extends Base {
   }
 
   #activate() {
+    this.inert = false;
     this.removeAttribute('data-leaving');
     this.#restore = document.activeElement;
     document.addEventListener('keydown', this.#onKey);
@@ -97,11 +98,19 @@ export class GsWindow extends Base {
   #deactivate() {
     document.removeEventListener('keydown', this.#onKey);
     this.setAttribute('data-leaving', '');
+    // a leaving window is still displayed, so its buttons still take keys unless it goes inert
+    this.inert = true;
     Promise.all([exit(this.#frame, { to: 'above' }), exit(this.#backdrop, { distance: 0 })]).then(([done]) => {
-      if (done && this.hasAttribute('open') === false) this.removeAttribute('data-leaving');
+      if (done && this.hasAttribute('open') === false) {
+        this.removeAttribute('data-leaving');
+        this.inert = false;
+      }
     });
     this.dispatchEvent(new CustomEvent('gs-close', { bubbles: true }));
     if (this.#restore !== null && typeof this.#restore.focus === 'function') this.#restore.focus();
+    // a restore target that can't take focus (body, a palette input that already left) leaves it on
+    // the frame, and escape then enter would answer yes to the thing you just dismissed XX
+    if (this.hasAttribute('open') === false && this.#frame.contains(document.activeElement)) document.activeElement.blur();
     this.#restore = null;
   }
 
