@@ -103,3 +103,35 @@ test.describe('reduced motion', () => {
     expect(result).toEqual({ text: 'quiet', animations: 0, glitch: '0' });
   });
 });
+
+test('a decode in a flex row holds its width on every scramble frame and shifts nothing', async ({ page }) => {
+  const r = await page.evaluate(() => new Promise((resolve) => {
+    const t0 = performance.now();
+    const shifts = [];
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.startTime > t0) shifts.push(e.value); }).observe({ type: 'layout-shift', buffered: true });
+    const el = document.getElementById('fd');
+    const after = document.getElementById('after');
+    const widths = [];
+    const lefts = [];
+    const mo = new MutationObserver(() => {
+      widths.push(el.getBoundingClientRect().width);
+      lefts.push(after.getBoundingClientRect().left);
+    });
+    mo.observe(el, { subtree: true, childList: true, characterData: true });
+    el.addEventListener('gs-decode-done', () => {
+      for (const rec of mo.takeRecords()) if (rec) widths.push(el.getBoundingClientRect().width);
+      mo.disconnect();
+      widths.push(el.getBoundingClientRect().width);
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve({ widths, lefts, shifts, final: el.hasAttribute('data-final') })));
+    }, { once: true });
+    // the same text again: a new, longer text would change the width once by design. what must not
+    // change it is the scramble, which draws in mono
+    window.GS.seed(3);
+    el.setAttribute('text', 'width holds');
+  }));
+  expect(r.widths.length).toBeGreaterThan(2);
+  expect(new Set(r.widths).size).toBe(1);
+  expect(new Set(r.lefts).size).toBe(1);
+  expect(r.shifts).toEqual([]);
+  expect(r.final).toBe(false);
+});

@@ -176,8 +176,11 @@ textarea { resize: vertical; min-height: 4em; }
 gs-mosaic, gs-face { display: inline-block; line-height: 0; }
 gs-mosaic canvas { display: block; image-rendering: pixelated; }
 
-gs-decode { display: inline; }
-gs-decode[data-playing] { font-family: var(--gs-font-mono); }
+/* while playing, a hidden copy of the final text in the host's font holds the box, and the
+   scramble draws over it in mono. generated content is in neither textContent nor innerText */
+gs-decode { display: inline-block; position: relative; }
+gs-decode[data-playing]::after { content: attr(data-final); visibility: hidden; }
+gs-decode[data-playing] [part="text"] { position: absolute; inset: 0; overflow: hidden; white-space: inherit; font-family: var(--gs-font-mono); }
 
 gs-tape {
   --gs-tape-color: var(--gs-color-bypass);
