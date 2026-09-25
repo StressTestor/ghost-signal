@@ -271,4 +271,12 @@ test('runs that recorded different steps are unevaluable, never a median of some
   const missing = [build({ steps: [{}, heavy] }), build({ index: 2, steps: [{}] })];
   unevaluable(() => fold(missing, { runsPlanned: 2 }));
   unevaluable(() => needsThirdRun(B, missing.map(e)));
+  // drive() numbers steps by position, so a steps() that branches swaps a step without dropping
+  // one: the counts match and the indices match. the name gives it away, and so does the kind
+  const renamed = [build({ steps: [{}, { name: 'theme flip', ...heavy }] }), build({ index: 2, steps: [{}, { name: 'close palette' }] }), build({ index: 3, steps: [{}, { name: 'close palette' }] })];
+  unevaluable(() => fold(renamed));
+  unevaluable(() => needsThirdRun(B, renamed.slice(0, 2).map(e)));
+  const rekinded = [build({ steps: [{}, { kind: 'input', name: 'x', ...heavy }] }), build({ index: 2, steps: [{}, { kind: 'idle', name: 'x' }] })];
+  unevaluable(() => fold(rekinded, { runsPlanned: 2 }));
+  unevaluable(() => needsThirdRun(B, rekinded.map(e)));
 });

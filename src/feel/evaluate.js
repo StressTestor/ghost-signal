@@ -263,11 +263,14 @@ function detailOf(step, check) {
 }
 
 // a median lines up the same step across runs. a step one run skipped would read as a 0, which
-// passes, so a missing measurement would quietly vote for green. they ALL show up or nobody folds XX
+// passes, so a missing measurement would quietly vote for green. drive() numbers steps by position,
+// so the index alone only counts them: a steps() that branches swaps one step for another and keeps
+// the count. index, kind and name all match or nobody folds. they ALL show up XX
 function sameSteps(runs) {
-  const ids = (r) => r.steps.map((s) => s.index).join(',');
-  if (runs.some((r) => ids(r) !== ids(runs[0]))) {
-    throw new GsFeelUnevaluable(`runs recorded different steps (${runs.map((r) => `run ${r.index}: ${ids(r) || 'none'}`).join(', ')}), so their medians would compare something with nothing. steps() has to call the same steps in the same order every run`);
+  const key = (r) => JSON.stringify(r.steps.map((s) => [s.index, s.kind, s.name]));
+  if (runs.some((r) => key(r) !== key(runs[0]))) {
+    const list = (r) => r.steps.map((s) => `${s.index} ${s.kind} "${s.name}"`).join(', ');
+    throw new GsFeelUnevaluable(`runs recorded different steps (${runs.map((r) => `run ${r.index}: ${list(r)}`).join('; ')}), so their medians would compare one step with another or with nothing. steps() has to call the same steps in the same order every run`);
   }
 }
 
