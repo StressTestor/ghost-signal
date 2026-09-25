@@ -88,6 +88,42 @@ test('feel.selfTest() never credits an earlier shift for the planted one', async
   expect(err.message).toContain('missed the planted shift');
 });
 
+// a live counter: a fixed span rewritten every frame. it's a non-ambient mutation, so a step that
+// holds it never goes quiet and runs to its settle timeout. left-anchored at a fixed width, it never
+// moves; right-anchored, its width changes with the text and it shifts itself a hair every frame
+const tickNow = (page, side) => page.evaluate((sd) => {
+  const t = document.createElement('span');
+  t.style.cssText = sd === 'left' ? 'position:fixed;left:8px;top:8px;width:80px;display:block' : 'position:fixed;right:0;top:0';
+  document.body.append(t);
+  let n = 0;
+  const f = () => { t.textContent = sd === 'left' ? String(n++) : 'x'.repeat((n++ % 5) + 1); requestAnimationFrame(f); };
+  requestAnimationFrame(f);
+}, side);
+
+test('feel.selfTest() sees the planted shift on a page whose steps never go quiet', async ({ page, feel }) => {
+  test.setTimeout(60_000);
+  await page.goto(url('clean'));
+  await page.evaluate(() => window.__gsFeel.ready());
+  await tickNow(page, 'left');
+  await page.waitForTimeout(300);
+  const result = await feel.selfTest();
+  expect(result.seen).toEqual(expect.arrayContaining(['input', 'shift', 'task']));
+});
+
+test("feel.selfTest() never credits the page's own shift for the planted one", async ({ page, feel }) => {
+  test.setTimeout(60_000);
+  await page.goto(url('untrusted'));
+  await page.evaluate(() => window.__gsFeel.ready());
+  // nothing left in flow, so the planted row lands and moves nothing, while the badge shifts itself
+  // on every frame, inside the window where the row lands too
+  await page.evaluate(() => { for (const el of [...document.body.children]) if (el.localName !== 'script') el.remove(); });
+  await tickNow(page, 'right');
+  await page.waitForTimeout(300);
+  const err = await feel.selfTest().then(() => null, (e) => e);
+  expect(err?.name).toBe('GsFeelUnevaluable');
+  expect(err.message).toContain('missed the planted shift');
+});
+
 test('the warm-up leaves focus where setup put it', async ({ page, feel }) => {
   test.setTimeout(60_000);
   const seen = [];

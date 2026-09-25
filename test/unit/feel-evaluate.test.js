@@ -162,6 +162,13 @@ test('shifts: recent input passes, before fcp is ignored, before the first step 
   assert.equal(report.violations.some((v) => v.data.sources.some((x) => x.path === 'div#early')), false);
 });
 
+test('a shift violation carries when it landed, so selfTest can tell its planted row by time', () => {
+  const run = evaluateRun(B, build({ shifts: [shift({ startTime: 1234.5 })] }), { mode: 'motion' });
+  const v = run.deterministic.find((x) => x.check === 'shift');
+  assert.equal(v.data.at, 1234.5);
+  assert.deepEqual(v.data.sources, [{ path: 'div#list', dx: 0, dy: 28 }]);
+});
+
 test('allowShift: a used exemption passes, a declared and unused one fails', () => {
   const allowed = shift({ sources: [{ path: 'div#feed', allowedBy: '#feed', previousRect: { x: 0, y: 0 }, currentRect: { x: 0, y: 28 } }] });
   const used = fold([build({ shifts: [allowed] })], { runsPlanned: 1, allowShift: [{ selector: '#feed', why: 'the feed grows by design' }] });

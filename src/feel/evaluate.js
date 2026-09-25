@@ -140,6 +140,7 @@ function judgeShifts(budgets, samples, out) {
       step: at === null ? LOAD : refOf(at),
       data: {
         value: sh.value,
+        at: sh.startTime,
         sources: sh.sources.filter((x) => x.allowedBy === null).map((x) => ({ path: x.path, dx: r1(x.currentRect.x - x.previousRect.x), dy: r1(x.currentRect.y - x.previousRect.y) })),
       },
     });

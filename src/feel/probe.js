@@ -11,7 +11,7 @@ export function installProbe() {
   const now = () => performance.now();
   const kebab = (k) => k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
   const state = {
-    armed: false, armedAt: null, run: 0, mode: 'motion', allow: [], step: null, steps: [],
+    armed: false, armedAt: null, plantedAt: null, plantedMoves: [], run: 0, mode: 'motion', allow: [], step: null, steps: [],
     events: [], shifts: [], shiftNodes: [], longtasks: [], loafs: [],
     animations: [], overlaps: [], overlapKeys: new Set(), calm: [],
     fcp: null, lastMutation: 0, seen: new WeakSet(), props: new WeakMap(), sink: 0,
@@ -311,7 +311,7 @@ export function installProbe() {
     },
     arm({ run, allowShift = [], mode = 'motion' }) {
       Object.assign(state, {
-        armed: true, armedAt: now(), run, mode, allow: allowShift, step: null, steps: [], events: [], longtasks: [], loafs: [],
+        armed: true, armedAt: now(), plantedAt: null, plantedMoves: [], run, mode, allow: allowShift, step: null, steps: [], events: [], longtasks: [], loafs: [],
         animations: [], overlaps: [], overlapKeys: new Set(), calm: [], seen: new WeakSet(), lastMutation: 0,
       });
       // shifts stay from page load on purpose: a scenario's fresh goto owns its load shifts. armedAt
@@ -360,7 +360,7 @@ export function installProbe() {
     disarm() {
       state.armed = false;
       return JSON.parse(JSON.stringify({
-        version: VERSION, run: state.run, mode: state.mode, fcp: state.fcp, armedAt: state.armedAt, steps: state.steps,
+        version: VERSION, run: state.run, mode: state.mode, fcp: state.fcp, armedAt: state.armedAt, plantedAt: state.plantedAt, plantedMoves: state.plantedMoves, steps: state.steps,
         events: state.events, shifts: state.shifts, longtasks: state.longtasks, loafs: state.loafs,
         animations: state.animations, overlaps: state.overlaps, calm: state.calm,
       }));
@@ -380,7 +380,17 @@ export function installProbe() {
           row.setAttribute('data-gs-feel-planted', '');
           row.textContent = 'planted row';
           row.style.cssText = 'height:40px';
+          // the stamp and the moves are how selfTest tells this row's shift from the page's own. a step
+          // index can't: a page that never goes quiet holds step 0 open past the landing. how far the
+          // row pushes things depends on the page (margins collapse, a centered body moves half), so
+          // it's read here, before and after, in one task the page's own frames can't get into XX
+          const kids = [...document.body.children].filter((el) => el.hasAttribute('data-gs-feel-planted') === false);
+          const before = kids.map((el) => el.getBoundingClientRect().top);
+          state.plantedAt = now();
           document.body.prepend(row);
+          const moves = new Set(kids.map((el, i) => Math.round((el.getBoundingClientRect().top - before[i]) * 10) / 10));
+          moves.delete(0);
+          state.plantedMoves = [...moves];
         }, 600);
       });
       document.body.append(b);

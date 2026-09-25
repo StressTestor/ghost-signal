@@ -49,6 +49,15 @@ function sinceArm(samples) {
   return { ...samples, shifts: samples.shifts.filter((s) => s.startTime >= samples.armedAt) };
 }
 
+// the planted row's shift reports on the first frame after the prepend. the bound is loose on
+// purpose for a slow runner; the moves match is what keeps a page's own shift out of it
+const PLANT_LANDS_MS = 500;
+export function plantedShift(v, samples) {
+  if (v.check !== 'shift' || typeof samples.plantedAt !== 'number' || typeof v.data?.at !== 'number') return false;
+  if (v.data.at < samples.plantedAt || v.data.at >= samples.plantedAt + PLANT_LANDS_MS) return false;
+  return v.data.sources.some((s) => s.dy !== 0 && samples.plantedMoves.some((m) => Math.abs(s.dy - m) <= 1));
+}
+
 const requireWhy = (why, what) => {
   if (typeof why !== 'string' || why.trim() === '') throw new GsFeelConfigError(`${what} needs a why: every exemption prints in every report`);
 };
@@ -280,16 +289,22 @@ function createFeel(page, testInfo, base) {
       const events = await tracer.stop();
       await page.evaluate(() => window.__gsFeel.unplant());
       const run = evaluateRun(base, { index: 0, samples: sinceArm(samples), trace: summarizeTrace(events), steady: null, calibration: 0 }, { mode: 'motion' });
-      // each plant counts only on the step that planted it: a slow click on step 0, the row landing
-      // on step 1. a violation from anywhere else is the page's, and crediting it would let the
-      // harness pass on a bug it never saw XX
+      // each plant counts only as itself: the slow click on the step that clicked it, and the row by
+      // what it is, a shift judged unprompted, landing within PLANT_LANDS_MS of the prepend and moving
+      // a source by what the row moved the page. a violation from anywhere else is the page's, and
+      // crediting it would let the harness pass on a bug it never saw XX
+      if (typeof samples.plantedAt !== 'number') throw new GsFeelUnevaluable('self test: the planted row never landed inside the armed window, so there was no shift to see');
       const click = run.steps.find((s) => s.index === 0);
       const seen = new Set();
       if ((click?.input?.duration ?? 0) > base.input) seen.add('input');
       if ((click?.task.worst ?? 0) > base.task) seen.add('task');
-      if (run.deterministic.some((v) => v.check === 'shift' && v.step?.index === 1)) seen.add('shift');
+      if (run.deterministic.some((v) => plantedShift(v, samples))) seen.add('shift');
       const missed = ['input', 'task', 'shift'].filter((c) => seen.has(c) === false);
-      if (missed.length > 0) throw new GsFeelUnevaluable(`self test: the harness missed the planted ${missed.join(', ')}. nothing it says about this app counts until it sees a bug planted on purpose`);
+      if (missed.length > 0) {
+        const loud = run.steps.filter((s) => s.settled === false).map((s) => `step ${s.index} "${s.name}" never went quiet`);
+        const moved = samples.plantedMoves.length === 0 ? ' the planted row moved nothing on this page.' : '';
+        throw new GsFeelUnevaluable(`self test: the harness missed the planted ${missed.join(', ')}.${moved}${loud.length > 0 ? ` ${loud.join(', ')}.` : ''} nothing it says about this app counts until it sees a bug planted on purpose`);
+      }
       return { seen: [...seen].sort() };
     },
   };
