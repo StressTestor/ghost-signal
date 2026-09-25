@@ -80,3 +80,9 @@ test('the texture tokens live in fx.css as data uris and no hex appears outside 
   const outsideUris = (base + fx).replace(/url\("data:[^"]*"\)/g, '');
   assert.doesNotMatch(outsideUris, /#[0-9a-f]{6}\b/i);
 });
+
+test('every keyframe in fx.css is a gs-event-* name, and fx.css lints clean', () => {
+  const names = [...fx.matchAll(/@keyframes\s+([a-z0-9-]+)/g)].map((m) => m[1]).sort();
+  assert.deepEqual(names, ['gs-event-flare', 'gs-event-glitch-a', 'gs-event-glitch-b', 'gs-event-glitch-shift', 'gs-event-mosh', 'gs-event-mosh-a', 'gs-event-mosh-b', 'gs-event-tape']);
+  assert.deepEqual(lintMotion(fx, 'src/fx.css'), []);
+});

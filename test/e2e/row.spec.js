@@ -67,6 +67,21 @@ test('deny rows flare on connect and at glitch 2 the label decodes', async ({ pa
   await expect(page.locator('#r4 [part="label"] gs-decode')).toHaveText('through');
 });
 
+test('the deny flare flashes opacity on the row\'s ::after and nothing else', async ({ page }) => {
+  const flare = await page.evaluate(() => {
+    const row = document.createElement('gs-row');
+    row.setAttribute('status', 'deny');
+    row.setAttribute('label', 'blocked');
+    document.body.append(row);
+    return row.getAnimations({ subtree: true }).map((a) => ({
+      name: a.animationName,
+      pseudo: a.effect.pseudoElement,
+      props: [...new Set(a.effect.getKeyframes().flatMap((f) => Object.keys(f)))].filter((k) => ['offset', 'computedOffset', 'easing', 'composite'].includes(k) === false).sort(),
+    }));
+  });
+  expect(flare).toEqual([{ name: 'gs-event-flare', pseudo: '::after', props: ['opacity'] }]);
+});
+
 test('containers carry the strong dither and the core copy unless given their own', async ({ page }) => {
   for (const id of ['empty', 'error', 'splash']) await expect(page.locator(`#${id}`)).toHaveClass(/gs-dither-strong/);
   await expect(page.locator('#empty gs-decode[part="copy"]')).toHaveText('nothing here yet. run something and the feed will wake up');

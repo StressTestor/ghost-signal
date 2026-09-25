@@ -261,3 +261,21 @@ test('hover color is a cut: hovering and pressing a control starts no transition
   expect(held).toBe('matrix(1, 0, 0, 1, 0, 1)');
   expect(await button.evaluate((el) => getComputedStyle(el).transform)).toBe('none');
 });
+
+test('moshOnce hands the text to the band copies and smears only transform and opacity', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => window.gallery.ambient({ min: 1e9, max: 2e9 }));
+  // the wordmark decodes on load, and data-t takes whatever text is there when the mosh fires
+  await expect(page.locator('#wordmark')).toHaveText('ghost signal');
+  const seen = await page.evaluate(async () => {
+    const { moshOnce } = await import('/src/gs.js');
+    const word = document.querySelector('.gs-wordmark');
+    const fired = moshOnce(word);
+    const anims = word.getAnimations({ subtree: true });
+    const props = new Set();
+    for (const a of anims) for (const f of a.effect.getKeyframes()) for (const k of Object.keys(f)) if (['offset', 'computedOffset', 'easing', 'composite'].includes(k) === false) props.add(k);
+    return { fired, t: word.dataset.t, names: anims.map((a) => a.animationName).sort(), props: [...props].sort() };
+  });
+  expect(seen).toEqual({ fired: true, t: 'ghost signal', names: ['gs-event-mosh', 'gs-event-mosh-a', 'gs-event-mosh-b'], props: ['opacity', 'transform'] });
+  await expect(page.locator('.gs-wordmark')).not.toHaveAttribute('data-t', { timeout: 2000 });
+});

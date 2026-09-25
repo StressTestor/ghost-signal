@@ -175,17 +175,18 @@ function fxOnce(el, cls, motion, { start = () => {}, end = () => {} } = {}) {
   return true;
 }
 
-// the slice's two clipped copies print attr(data-t), so the text rides in data-t for exactly the
-// glitch's length. no text (a canvas face) means no copies, just the translate shift (¬‿¬)
-export function glitchOnce(el) {
+// the slice and the smear print their copies from attr(data-t), so the text rides in data-t for
+// exactly the fx's length. no text (a canvas face) means no copies, just the element shift (¬‿¬)
+function sliceOnce(el, cls, motion) {
   const text = (el.textContent ?? '').trim();
-  if (text === '') return fxOnce(el, 'gs-glitch', 'glitch');
-  return fxOnce(el, 'gs-glitch', 'glitch', {
+  if (text === '') return fxOnce(el, cls, motion);
+  return fxOnce(el, cls, motion, {
     start: () => el.setAttribute('data-t', text),
     end: () => el.removeAttribute('data-t'),
   });
 }
-export const moshOnce = (el) => fxOnce(el, 'gs-mosh', 'mosh');
+export const glitchOnce = (el) => sliceOnce(el, 'gs-glitch', 'glitch');
+export const moshOnce = (el) => sliceOnce(el, 'gs-mosh', 'mosh');
 export const flareOnce = (el) => fxOnce(el, 'gs-flare', 'flare');
 
 // one-frame micro glitch on a random [data-gs-ambient] element every 20 to 40 seconds.

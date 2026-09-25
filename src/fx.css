@@ -29,7 +29,7 @@
    displace in 3 steps */
 :root[data-glitch="1"] .gs-glitch, :root[data-glitch="2"] .gs-glitch {
   position: relative;
-  animation: gs-glitch-shift var(--gs-motion-glitch) var(--gs-step-glitch) 1;
+  animation: gs-event-glitch-shift var(--gs-motion-glitch) var(--gs-step-glitch) 1;
 }
 /* glitchOnce puts the element's text in data-t for the glitch's length. no data-t, no copies,
    and the copies carry no fill of their own so they never box over the text underneath */
@@ -45,46 +45,84 @@
 :root[data-glitch="1"] .gs-glitch[data-t]::before, :root[data-glitch="2"] .gs-glitch[data-t]::before {
   color: var(--gs-color-glitch-a);
   clip-path: inset(0 0 55% 0);
-  animation: gs-glitch-a var(--gs-motion-glitch) var(--gs-step-glitch) 1;
+  animation: gs-event-glitch-a var(--gs-motion-glitch) var(--gs-step-glitch) 1;
 }
 :root[data-glitch="1"] .gs-glitch[data-t]::after, :root[data-glitch="2"] .gs-glitch[data-t]::after {
   color: var(--gs-color-glitch-b);
   clip-path: inset(45% 0 0 0);
-  animation: gs-glitch-b var(--gs-motion-glitch) var(--gs-step-glitch) 1;
+  animation: gs-event-glitch-b var(--gs-motion-glitch) var(--gs-step-glitch) 1;
 }
-@keyframes gs-glitch-shift { 0% { transform: translateX(-2px); } 50% { transform: translateX(2px); } 100% { transform: translateX(0); } }
-@keyframes gs-glitch-a { 0% { transform: translateX(-4px); } 50% { transform: translateX(3px); } 100% { transform: translateX(0); } }
-@keyframes gs-glitch-b { 0% { transform: translateX(4px); } 50% { transform: translateX(-3px); } 100% { transform: translateX(0); } }
+@keyframes gs-event-glitch-shift { 0% { transform: translateX(-2px); } 50% { transform: translateX(2px); } 100% { transform: translateX(0); } }
+@keyframes gs-event-glitch-a { 0% { transform: translateX(-4px); } 50% { transform: translateX(3px); } 100% { transform: translateX(0); } }
+@keyframes gs-event-glitch-b { 0% { transform: translateX(4px); } 50% { transform: translateX(-3px); } 100% { transform: translateX(0); } }
 
-/* datamosh smear on crash: 6 hard steps of vertical slicing */
+/* datamosh smear on crash: the text rides in data-t like the glitch, two copies print it through
+   static band clips (never animated), and the element and both bands jump in 6 hard steps.
+   transform and opacity only, so it composites. no text, no copies: the element shift alone */
 :root[data-glitch="1"] .gs-mosh, :root[data-glitch="2"] .gs-mosh {
-  animation: gs-mosh var(--gs-motion-mosh) var(--gs-step-mosh) 1;
+  position: relative;
+  animation: gs-event-mosh var(--gs-motion-mosh) var(--gs-step-mosh) 1;
 }
-@keyframes gs-mosh {
-  0% { clip-path: inset(0 0 0 0); transform: translate(0, 0); }
-  20% { clip-path: inset(10% 0 60% 0); transform: translate(6px, 0); }
-  40% { clip-path: inset(50% 0 20% 0); transform: translate(-5px, 0); }
-  60% { clip-path: inset(30% 0 30% 0); transform: translate(3px, 0); }
-  80% { clip-path: inset(70% 0 0 0); transform: translate(-2px, 0); }
-  100% { clip-path: inset(0 0 0 0); transform: translate(0, 0); }
+:root[data-glitch="1"] .gs-mosh[data-t]::before, :root[data-glitch="2"] .gs-mosh[data-t]::before,
+:root[data-glitch="1"] .gs-mosh[data-t]::after, :root[data-glitch="2"] .gs-mosh[data-t]::after {
+  content: attr(data-t);
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: none;
+}
+:root[data-glitch="1"] .gs-mosh[data-t]::before, :root[data-glitch="2"] .gs-mosh[data-t]::before {
+  color: var(--gs-color-glitch-a);
+  clip-path: inset(10% 0 60% 0);
+  animation: gs-event-mosh-a var(--gs-motion-mosh) var(--gs-step-mosh) 1;
+}
+:root[data-glitch="1"] .gs-mosh[data-t]::after, :root[data-glitch="2"] .gs-mosh[data-t]::after {
+  color: var(--gs-color-glitch-b);
+  clip-path: inset(50% 0 20% 0);
+  animation: gs-event-mosh-b var(--gs-motion-mosh) var(--gs-step-mosh) 1;
+}
+@keyframes gs-event-mosh {
+  0% { transform: translate(0, 0); opacity: 1; }
+  20% { transform: translate(6px, 0); opacity: 0.85; }
+  40% { transform: translate(-5px, 0); opacity: 1; }
+  60% { transform: translate(3px, 0); opacity: 0.7; }
+  80% { transform: translate(-2px, 0); opacity: 1; }
+  100% { transform: translate(0, 0); opacity: 1; }
+}
+@keyframes gs-event-mosh-a {
+  0% { transform: translate(-8px, 0); opacity: 1; }
+  33% { transform: translate(10px, 0); opacity: 0.6; }
+  66% { transform: translate(-4px, 0); opacity: 1; }
+  100% { transform: translate(0, 0); opacity: 0; }
+}
+@keyframes gs-event-mosh-b {
+  0% { transform: translate(8px, 0); opacity: 1; }
+  33% { transform: translate(-10px, 0); opacity: 0.6; }
+  66% { transform: translate(4px, 0); opacity: 1; }
+  100% { transform: translate(0, 0); opacity: 0; }
 }
 
-/* deny flare on a row: the bar and background flash in 8 steps */
-:root[data-glitch="1"] .gs-flare, :root[data-glitch="2"] .gs-flare {
-  animation: gs-flare var(--gs-motion-flare) var(--gs-step-flare) 1;
+/* deny flare on a row: an opacity flash behind the row's content, 8 steps, on-off-on-off. the
+   ::after sits under the content inside the row's own stacking context */
+:root[data-glitch="1"] .gs-flare, :root[data-glitch="2"] .gs-flare { position: relative; isolation: isolate; }
+:root[data-glitch="1"] .gs-flare::after, :root[data-glitch="2"] .gs-flare::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--gs-color-deny);
+  opacity: 0;
+  animation: gs-event-flare var(--gs-motion-flare) var(--gs-step-flare) 1;
 }
-@keyframes gs-flare {
-  0% { background-color: var(--gs-color-deny); }
-  25% { background-color: transparent; }
-  50% { background-color: var(--gs-color-deny); }
-  100% { background-color: transparent; }
-}
+@keyframes gs-event-flare { 0% { opacity: 1; } 25% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }
 
 /* tape scroll: the track holds the text twice, so -50% is seamless. static at glitch 0 */
 :root[data-glitch="1"] gs-tape [part="track"], :root[data-glitch="2"] gs-tape [part="track"] {
-  animation: gs-tape-scroll calc(var(--gs-motion-sprite) * 12) steps(48) infinite;
+  animation: gs-event-tape calc(var(--gs-motion-sprite) * 12) steps(48) infinite;
 }
-@keyframes gs-tape-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes gs-event-tape { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
 /* corrupt corners: 6x6 block fragments masked in the glitch colors. opt-in per panel at 1, every panel at 2 */
 .gs-panel[data-corrupt]::before, .gs-panel[data-corrupt]::after,
