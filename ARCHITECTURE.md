@@ -37,6 +37,8 @@ scripts/
   serve.js                static server on 127.0.0.1:4173 serving the repo root
   fetch-doto.sh           pinned font fetch + woff2 conversion (run once)
   sync-ghost-signal.sh    copies src/ gen/ schema/ into a no-bundler consumer
+  feel-baseline.js        the clean control n times: the runner's frame cpu, stalls, drops, calibration
+  record-feel-fixtures.js dev only: records the chromium traces the trace.js tests read
   lib/                    tokens.js contrast.js icons.js schema.js cli.js
 schema/                   app.v1.json flavor.v1.json
 src/
@@ -49,6 +51,7 @@ gen/                      GhostSignal.swift ghost_signal.rs tokens.md
 gallery/                  index.html gallery.js apps/probe/ screenshots/ (gitignored)
 test/unit                 node:test
 test/e2e                  playwright specs, pages/, fixtures/, __snapshots__/
+test/feel/pages           feel controls (clean.html so far)
 ```
 
 ## key patterns
@@ -116,7 +119,7 @@ commit sha with the version in a trailing comment:
 | `actions/upload-artifact` | `b7c566a772e6b6bfb58ed0dc250532a479d7789f` | v6.0.0 |
 
 steps: `npm ci` -> `npm run gen && git diff --exit-code` (generated files must already be current)
--> `npm test` -> `npm run check` -> `npx playwright install --with-deps --only-shell chromium` -> `npm run e2e` (job capped at 20 minutes)
+-> `npm test` -> `npm run check` -> `npx playwright install --with-deps --only-shell chromium` -> `npm run e2e` -> `node scripts/feel-baseline.js` (informational, continue-on-error) -> upload `feel-baseline` (job capped at 40 minutes)
 -> upload `gallery/screenshots` as an artifact (`if: always()`, ignored if absent). releasing is a
 git tag (`v0.1.0`) pushed to `origin`; consumers pin to it via `github:StressTestor/ghost-signal#v0.1.0`
 or `scripts/sync-ghost-signal.sh`.
@@ -188,6 +191,8 @@ npm run e2e
 npm run serve
 node scripts/ghost-signal.js check gallery/apps/probe/app.json
 DEST=vendor/ghost-signal scripts/sync-ghost-signal.sh v0.1.0
+node scripts/feel-baseline.js --runs=20 --dpr=2
+node scripts/record-feel-fixtures.js
 ```
 
-last updated: 2026-09-23 (v0.1.0)
+last updated: 2026-09-25 (v0.2 in progress, plan task 1)

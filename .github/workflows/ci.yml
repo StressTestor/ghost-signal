@@ -11,7 +11,9 @@ permissions:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # the step caps add up to 31 minutes (install 8, e2e 10, feel 10 from task 7, baseline 3) plus
+    # about 5 of npm ci, gen, unit and contrast. 20 would kill a run whose every step is inside its cap
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -34,6 +36,17 @@ jobs:
         timeout-minutes: 8
       - run: npm run e2e
         timeout-minutes: 10
+      # informational: what a github runner can hold on the clean control (spec 8.6). gates nothing,
+      # so a baseline crash never turns ci red
+      - run: node scripts/feel-baseline.js --runs=20 --dpr=2 && node scripts/feel-baseline.js --runs=20 --dpr=1
+        timeout-minutes: 8
+        continue-on-error: true
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: feel-baseline
+          path: test-results/feel-baseline-*.json
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
