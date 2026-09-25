@@ -87,11 +87,18 @@ async function traced(page, drive) {
   return { events, out };
 }
 
-function analyze(events, startName, endName) {
+// the renderer main thread, straight off the raw events. oneRun's RunTask guard needs it too, and
+// task 2 deletes analyze() whole, so this can't ride on analyze()'s return shape (¬‿¬)
+function rendererMain(events) {
   const started = events.find((e) => e.name === 'TracingStartedInBrowser');
   const pid = (started?.args?.data?.frames ?? []).find((f) => f.isOutermostMainFrame === true)?.processId;
   const tid = events.find((e) => e.ph === 'M' && e.name === 'thread_name' && e.pid === pid && e.args?.name === 'CrRendererMain')?.tid;
   if (pid === undefined || tid === undefined) throw new Error('trace has no renderer main thread. the trace format moved');
+  return { pid, tid };
+}
+
+function analyze(events, startName, endName) {
+  const { pid, tid } = rendererMain(events);
   const mark = (n) => events.find((e) => e.name === n && e.pid === pid)?.ts;
   const start = mark(startName);
   const end = mark(endName);
@@ -110,8 +117,6 @@ function analyze(events, startName, endName) {
   });
   const inside = tasks.filter((t) => t.ts >= start && t.ts <= end);
   return {
-    pid,
-    tid,
     cpu,
     stalls: inside.filter((t) => t.dur > 50_000 && t.tdur <= 50_000).length,
     drops: events.filter((e) => e.name === 'PipelineReporter' && e.ph === 'b' && e.pid === pid && e.ts >= start && e.ts <= end
@@ -155,14 +160,17 @@ async function oneRun(browser, index) {
     return { calOn };
   });
   await context.close();
-  const { pid, tid, ...a } = analyze(events, 'baseline:start', 'baseline:end');
+  const { pid, tid } = rendererMain(events);
+  const a = analyze(events, 'baseline:start', 'baseline:end');
   // these checks live here, outside analyze(), because task 2 swaps analyze() for trace.js whole.
+  // they read analyze()'s four keys (cpu, stalls, drops, composite) and nothing else
   // a window with no frames or a trace with no reporter reads as 0 over budget and 0 drops, the
   // greenest possible lie. a chromium bump that renames a category would produce exactly that >:[
   if (a.cpu.length === 0) throw new Error(`run ${index}: no BeginMainThreadFrame between baseline:start and baseline:end. the trace format moved`);
   if (!events.some((e) => e.name === 'PipelineReporter')) throw new Error(`run ${index}: trace has no PipelineReporter events, so 0 drops would mean no reporter, not no drops`);
   // every cpu bucket is a sum of main-thread RunTask tdur. lose RunTask and each bucket sums to 0,
-  // which reads as the fastest page ever measured. read the raw events so the check outlives analyze()
+  // which reads as the fastest page ever measured. pid and tid come from rendererMain() and the
+  // tasks from the raw events, so the check outlives analyze()
   if (!events.some((e) => e.name === 'RunTask' && e.ph === 'X' && e.pid === pid && e.tid === tid && typeof e.tdur === 'number')) {
     throw new Error(`run ${index}: no RunTask with tdur on the renderer main thread, so 0 over budget would mean no tasks, not a fast page`);
   }
