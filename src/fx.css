@@ -32,10 +32,12 @@
   animation: gs-event-glitch-shift var(--gs-motion-glitch) var(--gs-step-glitch) 1;
 }
 /* glitchOnce puts the element's text in data-t for the glitch's length. no data-t, no copies,
-   and the copies carry no fill of their own so they never box over the text underneath */
+   and the copies carry no fill of their own so they never box over the text underneath. the empty
+   alt text after the slash keeps them out of the accessibility tree: a toast is a live region, and a
+   screen reader would otherwise read the glyph soup twice more (¬‿¬) */
 :root[data-glitch="1"] .gs-glitch[data-t]::before, :root[data-glitch="2"] .gs-glitch[data-t]::before,
 :root[data-glitch="1"] .gs-glitch[data-t]::after, :root[data-glitch="2"] .gs-glitch[data-t]::after {
-  content: attr(data-t);
+  content: attr(data-t) / "";
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -58,14 +60,15 @@
 
 /* datamosh smear on crash: the text rides in data-t like the glitch, two copies print it through
    static band clips (never animated), and the element and both bands jump in 6 hard steps.
-   transform and opacity only, so it composites. no text, no copies: the element shift alone */
+   transform and opacity only, so it composites. no text, no copies: the element shift alone.
+   same empty alt text as the glitch copies, same reason */
 :root[data-glitch="1"] .gs-mosh, :root[data-glitch="2"] .gs-mosh {
   position: relative;
   animation: gs-event-mosh var(--gs-motion-mosh) var(--gs-step-mosh) 1;
 }
 :root[data-glitch="1"] .gs-mosh[data-t]::before, :root[data-glitch="2"] .gs-mosh[data-t]::before,
 :root[data-glitch="1"] .gs-mosh[data-t]::after, :root[data-glitch="2"] .gs-mosh[data-t]::after {
-  content: attr(data-t);
+  content: attr(data-t) / "";
   position: absolute;
   inset: 0;
   overflow: hidden;

@@ -143,6 +143,58 @@ test('bypass and crash toasts do not double their kaomoji', async ({ page }) => 
   await expect(crashItem.locator('[part="kaomoji"]')).toHaveCount(1);
 });
 
+// the slice and smear copies print attr(data-t) as generated content, and chrome reads generated
+// content into the accessibility tree. inside the toast's live region that is a second, scrambled
+// copy of the line for a screen reader. innerText skips generated content, so this reads the ax
+// tree over cdp while the copies are on screen
+async function axTextDuringFx(page, status) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Accessibility.enable');
+  const selector = `#toasts [part="item"][data-status="${status}"]`;
+  const read = (sel, fire = null) => page.evaluate(({ sel, fire }) => {
+    if (fire !== null) window.gallery.toast(fire);
+    const items = document.querySelectorAll(sel);
+    const item = items[items.length - 1];
+    return { t: item.dataset.t ?? null, before: getComputedStyle(item, '::before').content };
+  }, { sel, fire });
+  // the copies live only for the fx's length (180ms glitch, 420ms mosh). a snapshot only counts
+  // when data-t was set before it and is still set after it
+  for (let attempt = 0; attempt < 5; attempt++) {
+    // gs-toast appends the item and fires the fx synchronously, so reading in the same evaluate
+    // can't miss the window: a null here means the fx never fired
+    const fired = await read(selector, status);
+    if (fired.t === null) throw new Error(`${status} toast fired no fx copies`);
+    const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+    const still = await read(selector);
+    if (still.t !== fired.t) continue;
+    const { root } = await cdp.send('DOM.getDocument', { depth: 0 });
+    const { nodeIds } = await cdp.send('DOM.querySelectorAll', { nodeId: root.nodeId, selector });
+    const { node } = await cdp.send('DOM.describeNode', { nodeId: nodeIds[nodeIds.length - 1] });
+    const byId = new Map(nodes.map((n) => [n.nodeId, n]));
+    const texts = [];
+    const walk = (n) => {
+      if (n.role?.value === 'StaticText') texts.push(n.name?.value ?? '');
+      for (const id of n.childIds ?? []) if (byId.has(id)) walk(byId.get(id));
+    };
+    walk(nodes.find((n) => n.backendDOMNodeId === node.backendNodeId));
+    await cdp.detach();
+    return { ...fired, texts };
+  }
+  throw new Error(`never caught the ${status} fx copies on screen in 5 tries`);
+}
+
+test('toast fx copies render but stay out of the accessibility tree', async ({ page }) => {
+  await open(page);
+  const crash = await axTextDuringFx(page, 'crash');
+  // positive control: the copies are really painting the text while the ax tree is read
+  expect(crash.before).toContain(JSON.stringify(crash.t));
+  expect(crash.texts.filter((s) => s === crash.t), `crash ax text ${JSON.stringify(crash.texts)}`).toEqual([]);
+  expect(crash.texts.filter((s) => s === 'XX')).toHaveLength(1);
+  const bypass = await axTextDuringFx(page, 'bypass');
+  expect(bypass.before).toContain(JSON.stringify(bypass.t));
+  expect(bypass.texts.filter((s) => s === bypass.t), `bypass ax text ${JSON.stringify(bypass.texts)}`).toEqual([]);
+});
+
 test('the states row lays out in equal columns so the splash container is not collapsed to its content', async ({ page }) => {
   await open(page);
   const widths = await page.locator('#states .grid > *').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width));
@@ -198,7 +250,8 @@ test('glitchOnce hands the text to the slice copies for the glitch and takes it 
     fired: [true, true, true],
     t: 'ghost signal',
     faceT: null,
-    content: ['"ghost signal"', '"ghost signal"'],
+    // the text, then the empty alt text that keeps the copies out of the accessibility tree
+    content: ['"ghost signal" / ""', '"ghost signal" / ""'],
     background: ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)'],
   });
   await expect(page.locator('.gs-wordmark')).not.toHaveClass(/gs-glitch/, { timeout: 2000 });
