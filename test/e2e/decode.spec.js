@@ -169,3 +169,35 @@ test('the scramble overlay never loses a line to the clip, single line or wrappi
   expect(r.fd.filter((s) => s.sh > s.ch)).toEqual([]);
   expect(r.nd.filter((s) => s.sh > s.ch)).toEqual([]);
 });
+
+// the wordmark sets line-height: 1, and a mono line's ink runs past a 1em line box. with the overlay
+// clipped on both axes, every playing frame lost the bottom of g, y, j, q, | and _. nowrap already
+// keeps the overlay to one line, so anything below the box is glyph overhang, never a hidden line,
+// and only the horizontal axis is clipped. the proof is pixels: the host's box plus a band under it
+// must paint the same with the overlay clipped as with the clip lifted
+test('the scramble overlay keeps its descenders on a line-height 1 host', async ({ page }) => {
+  await page.addStyleTag({ content: ':root { --gs-motion-decode: 60s; } #tight { padding: 12px 0; }' });
+  const box = await page.evaluate(() => new Promise((resolve) => {
+    const el = document.getElementById('lh');
+    window.GS.seed(3);
+    el.setAttribute('text', 'ghost signal');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const s = el.querySelector('[part="text"]');
+      const r = el.getBoundingClientRect();
+      resolve({ playing: el.hasAttribute('data-playing'), frame: s.textContent, sh: s.scrollHeight, ch: s.clientHeight, left: r.left, right: r.right, top: r.top, bottom: r.bottom });
+    }));
+  }));
+  expect(box.playing).toBe(true);
+  // g settles on the first frame, so the frame on screen has a descender in it
+  expect(box.frame.startsWith('g')).toBe(true);
+  // the mono line really is taller than the 1em box, or this case proves nothing
+  expect(box.sh).toBeGreaterThan(box.ch);
+  // whole pixels inside the host's width, so the right-edge clip stays out of the shot
+  const clip = { x: Math.ceil(box.left), y: Math.floor(box.top), width: Math.floor(box.right) - Math.ceil(box.left) - 1, height: Math.ceil(box.bottom - box.top) + 10 };
+  const clipped = await page.screenshot({ clip });
+  await page.addStyleTag({ content: 'gs-decode[data-playing] [part="text"] { overflow: visible !important; }' });
+  const lifted = await page.screenshot({ clip });
+  const still = await page.evaluate(() => document.getElementById('lh').hasAttribute('data-playing'));
+  expect(still).toBe(true);
+  expect(clipped.equals(lifted)).toBe(true);
+});

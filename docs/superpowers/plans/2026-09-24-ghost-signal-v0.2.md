@@ -5202,7 +5202,7 @@ replace the two lines `gs-decode { display: inline; }` and `gs-decode[data-playi
    scramble draws over it in mono. generated content is in neither textContent nor innerText */
 gs-decode { display: inline-block; position: relative; }
 gs-decode[data-playing]::after { content: attr(data-final); visibility: hidden; }
-gs-decode[data-playing] [part="text"] { position: absolute; inset: 0; overflow: hidden; white-space: nowrap; font-family: var(--gs-font-mono); }
+gs-decode[data-playing] [part="text"] { position: absolute; inset: 0; overflow: clip visible; white-space: nowrap; font-family: var(--gs-font-mono); }
 ```
 
 - [ ] **Step 4: run the tests to see them pass**
