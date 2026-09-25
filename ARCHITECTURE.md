@@ -33,13 +33,13 @@ tokens.json               the only authored values
 scripts/
   gen.js                  writes src/tokens.css gen/* src/icons.{svg,js} gallery/apps/probe/flavor.{css,js}
   check-contrast.js       exit 1 per failing pair or css rule
-  ghost-signal.js         cli: check | flavor check | flavor build
+  ghost-signal.js         cli: check | flavor check | flavor build | lint-motion
   serve.js                static server on 127.0.0.1:4173 serving the repo root
   fetch-doto.sh           pinned font fetch + woff2 conversion (run once)
   sync-ghost-signal.sh    copies src/ gen/ schema/ into a no-bundler consumer
   feel-baseline.js        the clean control n times: the runner's frame cpu, stalls, drops, calibration
   record-feel-fixtures.js dev only: records the chromium traces the trace.js tests read
-  lib/                    tokens.js contrast.js icons.js schema.js cli.js
+  lib/                    tokens.js contrast.js icons.js schema.js cli.js motion-lint.js
 schema/                   app.v1.json flavor.v1.json
 src/
   tokens.css base.css fx.css icons.svg icons.js (generated)
@@ -197,9 +197,10 @@ npm run feel
 GS_FEEL_RUNS=1 npm run feel
 npm run serve
 node scripts/ghost-signal.js check gallery/apps/probe/app.json
+node scripts/ghost-signal.js lint-motion 'src/*.css'
 DEST=vendor/ghost-signal scripts/sync-ghost-signal.sh v0.1.0
 node scripts/feel-baseline.js --runs=20 --dpr=2
 node scripts/record-feel-fixtures.js
 ```
 
-last updated: 2026-09-25 (v0.2 in progress, plan task 8)
+last updated: 2026-09-25 (v0.2 in progress, plan task 9)

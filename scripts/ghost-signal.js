@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 // cli wrapper. all logic lives in lib/cli.js so the tests never spawn a shell to reach it
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { check, flavorBuild } from './lib/cli.js';
+import { lintMotion, expandGlobs } from './lib/motion-lint.js';
 
 const USAGE = [
   'usage:',
   '  ghost-signal check <file>',
   '  ghost-signal flavor check <file>',
   '  ghost-signal flavor build <file> [--out <dir>] [--gs-import <spec>]',
+  '  ghost-signal lint-motion <css files or quoted globs...>',
   'exit codes: 0 ok, 1 check failed, 2 usage or io error',
   '',
 ].join('\n');
@@ -28,6 +30,21 @@ function parseArgs(argv) {
 }
 
 async function main(argv) {
+  if (argv[0] === 'lint-motion') {
+    const files = await expandGlobs(argv.slice(1));
+    if (files.length === 0) {
+      process.stderr.write(`lint-motion: no css files matched\n${USAGE}`);
+      return 2;
+    }
+    const findings = [];
+    for (const f of files) findings.push(...lintMotion(await readFile(f, 'utf8'), f));
+    // silent when clean: a check that prints on success becomes wallpaper
+    if (findings.length > 0) {
+      process.stdout.write(`${findings.join('\n')}\n`);
+      return 1;
+    }
+    return 0;
+  }
   const { flags, rest } = parseArgs(argv);
   const command = rest[0] === 'flavor' ? `flavor ${rest[1] ?? ''}` : rest[0];
   const file = rest[0] === 'flavor' ? rest[2] : rest[1];

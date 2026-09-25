@@ -42,8 +42,8 @@ export function checkTokens(tokens) {
   return failures;
 }
 
-// minimal css rule walker: enough for our own two files. handles nested @media,
-// skips at-rules with declaration bodies (@font-face, @keyframes percent blocks are kept).
+// minimal css rule walker: enough for our own sheets. handles nested @media and @supports and
+// records them as parents; @keyframes percent blocks come back as rules whose parent is the @keyframes prelude
 export function cssRules(css) {
   const out = [];
   const src = css.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -56,7 +56,7 @@ export function cssRules(css) {
     } else if (ch === '}') {
       const selector = stack.pop();
       if (selector !== undefined && selector.startsWith('@') === false && buf.trim() !== '') {
-        out.push({ selector, body: buf });
+        out.push({ selector, body: buf, parents: stack.filter((s) => s.startsWith('@')) });
       }
       buf = '';
     } else {
