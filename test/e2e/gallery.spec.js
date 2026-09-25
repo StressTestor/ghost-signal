@@ -332,3 +332,20 @@ test('moshOnce hands the text to the band copies and smears only transform and o
   expect(seen).toEqual({ fired: true, t: 'ghost signal', names: ['gs-event-mosh', 'gs-event-mosh-a', 'gs-event-mosh-b'], props: ['opacity', 'transform'] });
   await expect(page.locator('.gs-wordmark')).not.toHaveAttribute('data-t', { timeout: 2000 });
 });
+
+test('the gallery paints once, built: loading it records no layout shift', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__shifts = [];
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__shifts.push({ value: e.value, at: e.startTime }); }).observe({ type: 'layout-shift', buffered: true });
+  });
+  await open(page);
+  await page.waitForTimeout(300);
+  const r = await page.evaluate(() => ({
+    observing: PerformanceObserver.supportedEntryTypes.includes('layout-shift'),
+    visibility: getComputedStyle(document.body).visibility,
+    shifts: window.__shifts,
+  }));
+  expect(r.observing).toBe(true);
+  expect(r.visibility).toBe('visible');
+  expect(r.shifts).toEqual([]);
+});

@@ -152,4 +152,6 @@ registerSprite('checks', ['#...', '.#..', '..#.', '...#']);
 await import('../src/components/wallpaper.js');
 await mountProbe();
 stopAmbient = startAmbient();
+// doto is font-display: block, so a late load would swap the wordmark's metrics after the reveal
+await document.fonts.ready;
 html.dataset.galleryReady = '1';

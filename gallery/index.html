@@ -8,6 +8,9 @@
   <link rel="stylesheet" href="../src/base.css">
   <link rel="stylesheet" href="../src/fx.css">
   <style>
+    /* the module fills every section after the first paint, which moved all five sections by 0.33
+       of the viewport (spec p22). the gallery shows once it's built, never while it builds */
+    html:not([data-gallery-ready]) body { visibility: hidden; }
     body { padding: var(--gs-space-5); display: grid; gap: var(--gs-space-5); max-width: 1100px; margin: 0 auto; }
     header { display: flex; align-items: center; gap: var(--gs-space-4); flex-wrap: wrap; }
     header nav { display: flex; gap: var(--gs-space-1); flex-wrap: wrap; }
