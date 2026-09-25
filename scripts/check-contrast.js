@@ -17,7 +17,7 @@ async function main() {
   for (const file of ['src/base.css', 'src/fx.css']) {
     const css = await readFile(new URL(file, root), 'utf8').catch(() => null);
     if (css === null) continue;
-    for (const f of scanCss(css, tokens)) lines.push(`${file}: ${f.selector} uses ${f.token}: ${f.reason}`);
+    for (const f of scanCss(css, tokens, file)) lines.push(`${file}: ${f.selector} uses ${f.token}: ${f.reason}`);
   }
   if (lines.length > 0) {
     process.stdout.write(`${lines.join('\n')}\n`);

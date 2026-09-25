@@ -183,6 +183,11 @@ or `gallery/`.
   rule's selector and drop an `@media` written inside a rule, so a nested sheet would lint clean
   without being read. fix: flatten the sheet (write each rule's full selector at the top level or
   inside plain `@media` / `@supports`), then lint again.
+- problem: `lint-motion` exits 2, or `npm run check` exits 2, with "unbalanced braces (<file> line
+  N: ...)". cause: `cssRules` reads strings, escapes and comments as text but counts every other
+  brace, and a count that doesn't come out even would mean part of the sheet went unread. the usual
+  culprit is a brace inside an unquoted `url(...)`. fix: quote the url (`url("a}b.png")`) or
+  close the rule the message names, then run it again.
 - problem: `gs-decode` renders empty text. cause: its text only comes from the `text` attribute;
   child text content is read once on first connect and never again. fix: set the `text` attribute,
   not element children.

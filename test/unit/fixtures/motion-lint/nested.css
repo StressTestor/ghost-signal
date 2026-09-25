@@ -1,3 +1,4 @@
+@import url(x.css);
 :root[data-glitch="1"] .poke {
   animation: sn-event-poke 200ms ease-out 1;
   &:hover { opacity: 1; }

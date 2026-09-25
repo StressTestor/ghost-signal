@@ -2,7 +2,7 @@
 // in gs:check so a bad keyframe fails before any browser opens (spec 7.4). the names are the
 // classification: -event- keyframes are signal and step, -spatial- keyframes are space and ease
 import { glob } from 'node:fs/promises';
-import { cssRules } from './contrast.js';
+import { cssRules, UNBALANCED } from './contrast.js';
 
 const ALLOWED = new Set(['transform', 'opacity']);
 const NAMED = /\b[a-z][a-z0-9]*(?:-[a-z0-9]+)*-(?:event|spatial)-[a-z0-9-]+/g;
@@ -55,38 +55,19 @@ const ungated = (selector) => splitTop(selector).filter((branch) => GATE.test(dr
 const nameOf = (part) => part.replace(/var\([^()]*\)/g, '').match(NAMED)?.[0];
 
 export const NESTED = 'ERR_LINT_MOTION_NESTED';
+export { UNBALANCED };
 // cssRules reads flat sheets only. css nesting hands it a parent's declarations glued to the child's
 // selector, and an @media inside a rule vanishes whole, so a nested sheet would lint clean unread.
-// refuse it at the first '{' that opens inside a style rule. same comment strip and ';' rule as cssRules
-function assertFlat(css, file) {
-  const stack = [];
-  let buf = '';
-  for (const ch of css.replace(/\/\*[\s\S]*?\*\//g, '')) {
-    if (ch === ';' && (stack.length === 0 || stack.at(-1).startsWith('@'))) {
-      buf = '';
-    } else if (ch === '{') {
-      const prelude = buf.trim();
-      const outer = stack.find((s) => s.startsWith('@') === false);
-      if (outer !== undefined) {
-        const inner = prelude.slice(prelude.lastIndexOf(';') + 1).trim();
-        throw Object.assign(new Error(`lint-motion: nested rules aren't supported (${file}: ${inner} inside ${outer}), flatten them`), { code: NESTED });
-      }
-      stack.push(prelude);
-      buf = '';
-    } else if (ch === '}') {
-      stack.pop();
-      buf = '';
-    } else {
-      buf += ch;
-    }
-  }
-}
+// refuse it at the first '{' that opens inside a style rule. one walker does both jobs, so the
+// nesting check can't drift from the reader it guards (¬‿¬)
+const refuseNested = (file) => (inner, outer) => {
+  throw Object.assign(new Error(`nested rules aren't supported (${file}: ${inner} inside ${outer}), flatten them`), { code: NESTED });
+};
 
 export function lintMotion(css, file) {
-  assertFlat(css, file);
   const findings = [];
   const say = (rule, detail) => findings.push(`${file}: ${rule}: ${detail}`);
-  const rules = cssRules(css);
+  const rules = cssRules(css, { file, onNested: refuseNested(file) });
   const keyframes = new Set();
   for (const r of rules) {
     const kf = r.parents.find((p) => p.startsWith('@keyframes'));

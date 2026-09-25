@@ -65,6 +65,8 @@ test('a sheet with nested rules is refused loudly, never half read', () => {
   assert.throws(() => lintMotion('.a { .b { transition: all 1s; } }', 'i.css'), nested);
   assert.throws(() => lintMotion('.a { @media (x) { transition: all 1s; } }', 'i.css'), nested);
   assert.throws(() => lintMotion('@media (x) { .a { &.b { opacity: 1; } } }', 'i.css'), nested);
+  // a statement at-rule above the nesting: its ';' must end the statement and nothing more
+  assert.throws(() => lintMotion('@import url(x.css); .a { animation: sn-event-poke 1s ease 1; &:hover { color: red; } }', 'i.css'), nested);
   // at-rules around flat rules are fine, and keyframe blocks are not nesting
   assert.deepEqual(lintMotion('@media (x) { @supports (y) { .a { transition: opacity 1s; } } } @keyframes sn-spatial-k { from { opacity: 0; } }', 'i.css'), []);
 });
@@ -73,6 +75,27 @@ test('a statement at-rule before a rule does not swallow the rule', () => {
   assert.deepEqual(rulesOf(lintMotion('@import url(x.css); .a { transition: all 1s; }', 'i.css')), ['transition property']);
   assert.deepEqual(rulesOf(lintMotion('@media (x) { @layer a, b; .a { transition: all 1s; } }', 'i.css')), ['transition property']);
   assert.deepEqual(cssRules('@charset "utf-8"; .a { color: red; }').map((r) => r.selector), ['.a']);
+});
+
+test('a brace, quote or comment inside a string is text, and an unbalanced sheet is refused', () => {
+  const ev = 'animation: sn-event-poke 180ms ease 1;';
+  const both = ['event eased', 'ungated event'];
+  assert.deepEqual(rulesOf(lintMotion(`.p::before { content: "}"; ${ev} }`, 'i.css')), both);
+  assert.deepEqual(rulesOf(lintMotion(`.p::before { content: "{"; ${ev} }`, 'i.css')), both);
+  assert.deepEqual(rulesOf(lintMotion(`.p::before { content: '}'; ${ev} }`, 'i.css')), both);
+  assert.deepEqual(rulesOf(lintMotion(`.p::before { content: "\\"}"; ${ev} }`, 'i.css')), both);
+  // a comment opener inside a string opens nothing: the rule between the two strings is still read
+  assert.deepEqual(rulesOf(lintMotion(`.p { content: "/*"; ${ev} } .q { content: "*/"; }`, 'i.css')), both);
+  // and a brace or quote inside a comment is nothing at all
+  assert.deepEqual(rulesOf(lintMotion(`/* don't } */ .p { /* { */ ${ev} }`, 'i.css')), both);
+  assert.deepEqual(cssRules('.p { content: "}"; opacity: 1; }'), [{ selector: '.p', body: ' content: "}"; opacity: 1; ', parents: [] }]);
+  // a '}' that closes nothing, a rule that never closes and a string that never closes each read
+  // as half a sheet, so each is refused
+  const unbalanced = { code: 'ERR_CSS_UNBALANCED' };
+  assert.throws(() => lintMotion('.a { opacity: 1; } }', 'i.css'), { ...unbalanced, message: /i\.css line 1: a '}' that closes nothing/ });
+  assert.throws(() => lintMotion(`.a {\n  ${ev}\n`, 'i.css'), { ...unbalanced, message: /i\.css line 1: \.a never closes/ });
+  assert.throws(() => lintMotion(`.a { content: "}; ${ev} }`, 'i.css'), { ...unbalanced, message: /i\.css line 1: a string never closes/ });
+  assert.throws(() => cssRules('.a { color: red; } }'), unbalanced);
 });
 
 test('each animation in a list is judged by its own timing', () => {
@@ -119,4 +142,8 @@ test('the cli exits 1 with findings, 0 and silent when clean, 2 when nothing mat
   assert.equal(nested.code, 2);
   assert.equal(nested.stdout, '');
   assert.match(nested.stderr, /lint-motion: nested rules aren't supported \(.*nested\.css: &:hover inside :root\[data-glitch="1"\] \.poke\), flatten them/);
+  const unbalanced = await run(process.execPath, [bin, 'lint-motion', `${dir}clean.css`, `${dir}unbalanced.css`]).catch((e) => e);
+  assert.equal(unbalanced.code, 2);
+  assert.equal(unbalanced.stdout, '');
+  assert.match(unbalanced.stderr, /lint-motion: unbalanced braces \(.*unbalanced\.css line 5: a '}' that closes nothing\)/);
 });
