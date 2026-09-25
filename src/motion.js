@@ -53,6 +53,10 @@ export function retargetDuration(full, remaining) {
 }
 
 const isMove = (a) => typeof a.id === 'string' && a.id.startsWith('gs-move:');
+// mutate hands back the rebuilt targets only as an iterable object that isn't a node. insertBefore
+// returns the node it moved, an assignment arrow returns a string, and a form or a select iterates
+// its own controls: all of them mean "same targets"
+const isTargets = (r) => r !== null && typeof r === 'object' && typeof r[Symbol.iterator] === 'function' && typeof r.nodeType !== 'number';
 const translateOf = (transform) => {
   if (transform === 'none' || transform === '') return { x: 0, y: 0 };
   const m = new DOMMatrixReadOnly(transform);
@@ -149,9 +153,10 @@ export function flip(targets, mutate, { duration = 'shift', easing = 'move', key
     }
     return Promise.all(moves).then((all) => all.every(Boolean));
   };
+  const targetsOf = (r) => (isTargets(r) ? r : list);
   const result = mutate();
-  if (result !== null && result !== undefined && typeof result.then === 'function') return result.then((next) => settle(next ?? list));
-  return settle(result ?? list);
+  if (result !== null && result !== undefined && typeof result.then === 'function') return result.then((next) => settle(targetsOf(next)));
+  return settle(targetsOf(result));
 }
 
 export function drawerProgress(transformY, height, opening) {
@@ -191,19 +196,37 @@ export function drawer({ height = 0, duration = 'shift', easing = 'move' } = {})
       done = Promise.resolve(true);
       return done;
     }
+    // a flip or a slide still moving one of these nodes stops here, and the offset it had rides the
+    // drawer's frames: the latest intent wins, from where the node is (spec 3.2, 6.2). all read before
+    // any animate, so a node named twice never takes over the drawer's own move (¬‿¬)
+    const carried = new Map();
+    for (const el of inner === null ? followers : [inner, ...followers]) if (carried.has(el) === false) carried.set(el, takeOver(el)?.y ?? 0);
     const y = (v) => ({ transform: `translateY(${v}px)` });
     const options = { duration: time, easing: token(`--gs-ease-${easing}`) || 'linear', id: 'gs-move:drawer', fill: open ? 'none' : 'forwards' };
-    if (inner !== null) anims.push(inner.animate(open ? [y(-(1 - from) * h), y(0)] : [y(-(1 - from) * h), y(-h)], options));
-    for (const f of followers) anims.push(f.animate(open ? [y(-(1 - from) * h), y(0)] : [y(from * h), y(0)], options));
-    for (const a of anims) a.currentTime = currentTime;
+    const ride = (el, a, b) => {
+      const anim = el.animate([y(a), y(b)], options);
+      anim.currentTime = currentTime;
+      const extra = carried.get(el);
+      // adopt lands mid motion, so the offset goes in at the eased progress it lands on and fades out
+      // from there. keyframe offsets read eased progress, which is what getComputedTiming reports
+      const e = extra === 0 ? 1 : (anim.effect.getComputedTiming().progress ?? 0);
+      if (e === 0) anim.effect.setKeyframes([y(a + extra), y(b)]);
+      else if (e < 1) anim.effect.setKeyframes([y(a), { offset: e, ...y(a + (b - a) * e + extra) }, y(b)]);
+      anims.push(anim);
+    };
+    if (inner !== null) ride(inner, -(1 - from) * h, open ? 0 : -h);
+    for (const f of followers) ride(f, open ? -(1 - from) * h : from * h, 0);
     const mine = anims;
-    done = Promise.all(mine.map((a) => a.finished)).then(() => {
+    // settled, not all: a helper that cancels one of these (flip's sweep, slide's takeOver) must not
+    // strand the rest. they land, then every one is detached and progress reads the end state.
+    // left attached, a finished move holds its fill and outranks a later transition (task 15) >:[
+    done = Promise.allSettled(mine.map((a) => a.finished)).then((rs) => {
       if (anims === mine) {
         for (const a of mine) a.cancel();
         anims = [];
       }
-      return true;
-    }, () => false);
+      return rs.every((r) => r.status === 'fulfilled');
+    });
     return done;
   }
 
