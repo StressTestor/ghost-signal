@@ -65,7 +65,8 @@ test/feel                 playwright feel project: harness.spec.js (controls), p
   hover pair (`--gs-motion-hover` 0ms, `--gs-ease-hover`) stays emitted until 0.3.
 - the status vocabulary is `idle working ok warn deny bypass crash`. `coerceStatus` turns anything
   else into `warn` with a console error. the face is always green; status lives on dots, bars, toasts.
-- motion is a hard cut. only `color`, `border-color`, `background-color` ease, on hover and focus.
+- state changes are hard cuts. `base.css` declares no transition and no animation: hover, focus and
+  the press (`translateY(1px)` on an active button, row head or palette row) all cut.
   every animation in `fx.css` is gated on `:root[data-glitch="1"]` or `"2"`; reduced motion zeroes
   the motion tokens and `gs.js` forces `data-glitch="0"` on import.
 - `gs-mosaic` has no rng and draws integer-aligned rects, so canvas hashes are pinned in
@@ -213,4 +214,4 @@ node scripts/feel-baseline.js --runs=20 --dpr=2
 node scripts/record-feel-fixtures.js
 ```
 
-last updated: 2026-09-25 (v0.2 in progress, plan task 9)
+last updated: 2026-09-25 (v0.2 in progress, plan task 10)

@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
 import { loadTokens } from '../../scripts/lib/tokens.js';
 import { scanCss, cssRules } from '../../scripts/lib/contrast.js';
+import { lintMotion } from '../../scripts/lib/motion-lint.js';
 
 const src = new URL('../../src/', import.meta.url);
 const base = await readFile(new URL('base.css', src), 'utf8');
 const fx = await readFile(new URL('fx.css', src), 'utf8');
+const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '');
 
 test('font-face points at the bundled doto file and nothing is fetched', async () => {
   assert.match(base, /@font-face\s*\{[^}]*font-family:\s*"Doto"/);
@@ -17,14 +19,20 @@ test('font-face points at the bundled doto file and nothing is fetched', async (
   assert.ok(info.size > 5_000);
 });
 
-test('every transition eases only color, border-color and background-color with the hover tokens', () => {
-  const values = [...(base + fx).matchAll(/transition:\s*([^;]+);/g)].map((m) => m[1]);
-  assert.ok(values.length >= 4);
-  for (const v of values) {
-    for (const part of v.split(',').map((p) => p.trim())) {
-      assert.match(part, /^(color|border-color|background-color) var\(--gs-motion-hover\) var\(--gs-ease-hover\)$/, part);
-    }
-  }
+test('base.css and fx.css declare no transition: hover and focus color are cuts', () => {
+  assert.doesNotMatch(strip(base + fx), /(^|[\s;{])transition(-[a-z]+)?\s*:/);
+});
+
+test('base.css lints clean', () => {
+  assert.deepEqual(lintMotion(base, 'src/base.css'), []);
+});
+
+test('the press is a 1px cut on buttons, row heads and palette rows', () => {
+  const press = cssRules(base).find((r) => r.selector.includes('button:active:not(:disabled)'));
+  assert.ok(press, 'no press rule');
+  assert.match(press.selector, /gs-row \[part="head"\]:active/);
+  assert.match(press.selector, /gs-palette \[part="row"\]:active/);
+  assert.match(press.body, /transform:\s*translateY\(1px\)/);
 });
 
 test('no shadows, no blur, no glass', () => {

@@ -1,5 +1,6 @@
 /* ghost signal base layer. tokens come from tokens.css; this file authors no color value.
-   easing exists only on the three properties below, only on hover and focus. everything else cuts (¬‿¬) */
+   nothing here eases or animates: hover, focus and the press are cuts. spatial motion lives in
+   motion.css and event motion in fx.css (¬‿¬) */
 
 @font-face {
   font-family: "Doto";
@@ -50,7 +51,6 @@ button {
   color: var(--gs-color-text);
   cursor: pointer;
   text-transform: lowercase;
-  transition: color var(--gs-motion-hover) var(--gs-ease-hover), border-color var(--gs-motion-hover) var(--gs-ease-hover), background-color var(--gs-motion-hover) var(--gs-ease-hover);
 }
 button:hover { border-color: var(--gs-color-accent); }
 button:disabled { cursor: not-allowed; color: var(--gs-color-text-muted); border-color: var(--gs-color-hairline); }
@@ -60,6 +60,8 @@ button[data-variant="ghost"] { background-color: transparent; border-color: tran
 button[data-variant="ghost"]:hover { color: var(--gs-color-text); border-color: var(--gs-color-hairline); }
 button[data-variant="danger"] { background-color: transparent; border-color: var(--gs-color-deny); color: var(--gs-color-deny); }
 button[data-variant="danger"]:hover { background-color: var(--gs-color-deny); color: var(--gs-color-on-accent); }
+/* the press: a 1px drop on the frame after pointerdown, no transition. the fastest answer there is */
+button:active:not(:disabled), gs-row [part="head"]:active, gs-palette [part="row"]:active { transform: translateY(1px); }
 
 input, select, textarea {
   font-family: var(--gs-font-mono);
@@ -69,7 +71,6 @@ input, select, textarea {
   border-radius: var(--gs-radius-control);
   background-color: var(--gs-color-raised);
   color: var(--gs-color-text);
-  transition: color var(--gs-motion-hover) var(--gs-ease-hover), border-color var(--gs-motion-hover) var(--gs-ease-hover), background-color var(--gs-motion-hover) var(--gs-ease-hover);
 }
 input::placeholder, textarea::placeholder { color: var(--gs-color-text-muted); }
 input:hover, select:hover, textarea:hover { border-color: var(--gs-color-text-muted); }
@@ -152,7 +153,6 @@ textarea { resize: vertical; min-height: 4em; }
   color: var(--gs-color-text-muted);
   text-transform: lowercase;
   cursor: pointer;
-  transition: color var(--gs-motion-hover) var(--gs-ease-hover), border-color var(--gs-motion-hover) var(--gs-ease-hover), background-color var(--gs-motion-hover) var(--gs-ease-hover);
 }
 .gs-nav-item:hover { color: var(--gs-color-text); background-color: var(--gs-color-surface); }
 .gs-nav-item[aria-current="page"], .gs-nav-item[aria-current="true"] { border-left-color: var(--gs-color-accent); color: var(--gs-color-text); }
@@ -259,7 +259,6 @@ gs-row [part="head"] {
   gap: var(--gs-space-3);
   padding: var(--gs-space-2) var(--gs-space-3);
   cursor: pointer;
-  transition: color var(--gs-motion-hover) var(--gs-ease-hover), border-color var(--gs-motion-hover) var(--gs-ease-hover), background-color var(--gs-motion-hover) var(--gs-ease-hover);
 }
 gs-row [part="head"]:hover { background-color: var(--gs-color-surface); }
 gs-row [part="sigil"] { font-family: var(--gs-font-mono); color: var(--gs-color-text-muted); min-width: 1.5em; }

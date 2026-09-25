@@ -242,3 +242,15 @@ test.describe('reduced motion', () => {
     expect(state).toEqual({ animations: 0, glitching: 0, glitch: '0', wordmark: 'ghost signal' });
   });
 });
+
+test('hover color is a cut: hovering and pressing a control starts no transition', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => window.gallery.setGlitch(0));
+  const button = page.locator('#controls button').first();
+  await button.hover();
+  await page.mouse.down();
+  const transitions = await page.evaluate(() => document.getAnimations().filter((a) => a instanceof CSSTransition).length);
+  await page.mouse.up();
+  expect(transitions).toBe(0);
+  expect(await button.evaluate((el) => getComputedStyle(el).transform)).toBe('none');
+});
