@@ -26,6 +26,18 @@ function stepTitle(step) {
   return `step ${step.index} "${step.name}" (${step.kind}${step.inputType ? `: ${step.inputType}` : ''})`;
 }
 
+// evaluate.js writes two kinds of stall: a rAF gap with no cpu behind it, and a task long on the
+// wall clock with its cpu under budget. a task stall had cpu behind it, so one "no cpu" count for
+// both lied about every task in it. counted apart, and the grammar survives a count of 1 (¬‿¬)
+function stallsText(stalls) {
+  const gaps = stalls.filter((s) => s.what.includes('rAF gap')).length;
+  const tasks = stalls.length - gaps;
+  const parts = [];
+  if (gaps > 0) parts.push(`${plural(gaps, 'rAF gap')} with no cpu behind ${gaps === 1 ? 'it' : 'them'}`);
+  if (tasks > 0) parts.push(`${plural(tasks, 'task')} long on the wall clock only`);
+  return parts.join(', ');
+}
+
 function lines(v) {
   const d = v.data ?? {};
   switch (v.check) {
@@ -93,7 +105,7 @@ export function formatReport(r) {
   out.push(r.unconfirmed.length === 0
     ? 'unconfirmed: none'
     : `unconfirmed: ${r.unconfirmed.map((u) => `step ${u.step.index} ${u.check} ${f1(Math.max(...u.values.map((x) => x.value)))}ms in run ${u.values.filter((x) => x.value > u.limit).map((x) => x.run).join(' and ')} only`).join('; ')}. annotated feel-unconfirmed`);
-  out.push(r.stalls.length === 0 ? 'stalls: none' : `stalls: ${plural(r.stalls.length, 'stall')} with no cpu behind them (runner descheduled chromium). informational`);
+  out.push(r.stalls.length === 0 ? 'stalls: none' : `stalls: ${stallsText(r.stalls)} (runner descheduled chromium). informational`);
   out.push(r.exemptions.length === 0
     ? 'exemptions: none'
     : `exemptions: ${r.exemptions.map((e) => `${e.kind} ${e.target} (${e.why})${e.used ? '' : ', unused'}`).join('; ')}`);

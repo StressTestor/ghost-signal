@@ -37,7 +37,7 @@ test('a failing report prints the spec 7.9 shape', () => {
     '             if intended, feel.allowShift(selector, why)',
     '',
     'unconfirmed: step 12 frame 18.9ms in run 1 only. annotated feel-unconfirmed',
-    'stalls: 2 stalls with no cpu behind them (runner descheduled chromium). informational',
+    'stalls: 2 rAF gaps with no cpu behind them (runner descheduled chromium). informational',
     'exemptions: none',
     'passed: 18 other steps. 14 animations, all transform or opacity, all composited',
     '',
@@ -66,7 +66,8 @@ test('every check kind renders, in lowercase, with no em dash and no exclamation
   const load = { index: null, name: 'load', kind: 'load', inputType: null };
   const s0 = { index: 0, name: 'open drawer', kind: 'input', inputType: 'click' };
   const report = {
-    ...base, runsPlanned: 3, runsDone: 3, result: 'fail', unconfirmed: [], stalls: [],
+    ...base, runsPlanned: 3, runsDone: 3, result: 'fail', unconfirmed: [],
+    stalls: [{ step: s0, what: 'a 60ms task with 10ms of cpu', run: 2 }],
     exemptions: [{ kind: 'answer', target: 'step 0 "open drawer"', why: 'the press is the answer', used: false }],
     violations: [
       { check: 'shift', step: load, runs: [1], data: { value: 0.3313, sources: [{ path: 'section#faces', dx: 0, dy: 59.2 }] } },
@@ -96,6 +97,7 @@ test('every check kind renders, in lowercase, with no em dash and no exclamation
     '  family     event eased: sn-event-eased on div#a::after (ease-out)',
     '  drops      2 compositor frames dropped while this step ran',
     '  exemption  answer exemption on step 0 "open drawer" was declared and no run used it (the press is the answer)',
+    'stalls: 1 task long on the wall clock only (runner descheduled chromium). informational',
     'exemptions: answer step 0 "open drawer" (the press is the answer), unused',
     'passed: 19 other steps. 14 animations, not all transform or opacity, not all composited',
   ]) assert.ok(text.includes(line), `missing: ${line}`);
@@ -103,4 +105,18 @@ test('every check kind renders, in lowercase, with no em dash and no exclamation
   assert.doesNotMatch(text, /\u2014/);
   assert.doesNotMatch(text, /!/);
   assert.match(text, /^feel: gallery \/ g1-dark failed 10 checks in 2 steps\. runs 1 and 2 disagreed, run 3 decided\n/);
+});
+
+test('the stalls line counts rAF gaps and wall-clock-only tasks apart, and agrees at 1', () => {
+  const s0 = { index: 0, name: 'open drawer', kind: 'input', inputType: 'click' };
+  const stalls = [
+    { step: s0, what: 'a 40ms rAF gap with no cpu behind it', run: 1 },
+    { step: s0, what: 'a 60ms task with 10ms of cpu', run: 1 },
+    { step: s0, what: 'a 72ms task with 30ms of cpu', run: 2 },
+  ];
+  const line = (st) => formatReport({ ...base, runsPlanned: 1, runsDone: 1, result: 'pass', violations: [], unconfirmed: [], stalls: st })
+    .split('\n').find((l) => l.startsWith('stalls:'));
+  assert.equal(line(stalls), 'stalls: 1 rAF gap with no cpu behind it, 2 tasks long on the wall clock only (runner descheduled chromium). informational');
+  assert.equal(line(stalls.slice(0, 1)), 'stalls: 1 rAF gap with no cpu behind it (runner descheduled chromium). informational');
+  assert.equal(line(stalls.slice(1)), 'stalls: 2 tasks long on the wall clock only (runner descheduled chromium). informational');
 });
