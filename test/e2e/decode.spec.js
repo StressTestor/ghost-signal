@@ -135,3 +135,37 @@ test('a decode in a flex row holds its width on every scramble frame and shifts 
   expect(r.shifts).toEqual([]);
   expect(r.final).toBe(false);
 });
+
+// the overlay is sized to the final text in the host's font but draws in mono, which is wider. if it
+// wrapped inside that box, overflow: hidden ate whole lines: "width holds" lost its second word for the
+// entire scramble. so the overlay stays on one line and only its right edge clips. #nd wraps to two
+// lines in the host font, which pins the trade-off: its lower line is blank while it plays
+test('the scramble overlay never loses a line to the clip, single line or wrapping host', async ({ page }) => {
+  const r = await page.evaluate(() => new Promise((resolve) => {
+    const hosts = ['fd', 'nd'].map((id) => document.getElementById(id));
+    const samples = { fd: [], nd: [] };
+    const mo = new MutationObserver(() => {
+      for (const el of hosts) {
+        if (el.hasAttribute('data-playing') === false) continue;
+        const s = el.querySelector('[part="text"]');
+        samples[el.id].push({ sh: s.scrollHeight, ch: s.clientHeight });
+      }
+    });
+    mo.observe(document.body, { subtree: true, childList: true, characterData: true });
+    let left = hosts.length;
+    for (const el of hosts) {
+      el.addEventListener('gs-decode-done', () => {
+        left -= 1;
+        if (left === 0) { mo.disconnect(); resolve(samples); }
+      }, { once: true });
+    }
+    window.GS.seed(3);
+    for (const el of hosts) el.setAttribute('text', el.getAttribute('text'));
+  }));
+  expect(r.fd.length).toBeGreaterThan(2);
+  expect(r.nd.length).toBeGreaterThan(2);
+  // the wrapping host really is taller than one line, or this case proves nothing
+  expect(r.nd[0].ch).toBeGreaterThan(r.fd[0].ch * 1.5);
+  expect(r.fd.filter((s) => s.sh > s.ch)).toEqual([]);
+  expect(r.nd.filter((s) => s.sh > s.ch)).toEqual([]);
+});

@@ -177,10 +177,12 @@ gs-mosaic, gs-face { display: inline-block; line-height: 0; }
 gs-mosaic canvas { display: block; image-rendering: pixelated; }
 
 /* while playing, a hidden copy of the final text in the host's font holds the box, and the
-   scramble draws over it in mono. generated content is in neither textContent nor innerText */
+   scramble draws over it in mono. generated content is in neither textContent nor innerText.
+   mono is wider than the box it draws in, so the overlay never wraps: wrapped, the clip ate whole
+   words. one line, right edge clipped, and a wrapping host's lower lines sit blank until it lands (¬‿¬) */
 gs-decode { display: inline-block; position: relative; }
 gs-decode[data-playing]::after { content: attr(data-final); visibility: hidden; }
-gs-decode[data-playing] [part="text"] { position: absolute; inset: 0; overflow: hidden; white-space: inherit; font-family: var(--gs-font-mono); }
+gs-decode[data-playing] [part="text"] { position: absolute; inset: 0; overflow: hidden; white-space: nowrap; font-family: var(--gs-font-mono); }
 
 gs-tape {
   --gs-tape-color: var(--gs-color-bypass);
