@@ -6688,6 +6688,10 @@ const opacitySeries = (sel) => (ms, during) => new Promise((resolve) => {
   requestAnimationFrame(f);
 });
 
+// the exit is 100ms, and a key press or a timer can land after it on a slow runner and pass for
+// nothing. stretch it so the second key or the reopen lands inside it, then prove it did
+const slowExit = (page) => page.addStyleTag({ content: ':root { --gs-motion-exit: 1000ms !important; }' });
+
 test('the palette opens on transform and opacity only, with the input focused on frame 0', async ({ page }) => {
   await page.keyboard.press('Control+k');
   const r = await page.evaluate((book) => {
@@ -6718,22 +6722,44 @@ test('close drops open at once, stays displayed through the exit, then hides', a
 });
 
 test('reopening the palette mid-exit turns the box around with no jump', async ({ page }) => {
+  await slowExit(page);
   const r = await page.evaluate(async (src) => {
     const series = new Function(`return ${src}`)()('#p [part="box"]');
     const p = document.getElementById('p');
+    const box = p.querySelector('[part="box"]');
     const fresh = await series(300, () => p.open());
-    await new Promise((res) => setTimeout(res, 100));
-    let turnAt = 0;
-    const turned = await series(400, () => {
-      p.close();
-      setTimeout(() => { turnAt = performance.now(); p.open(); }, 50);
+    // motion.js cancels an enter the moment it lands. a sleep here let close() take over a pending
+    // enter, and the retargeted exit could end before the turn ever came
+    await new Promise((res) => {
+      const f = () => (box.getAnimations().length === 0 ? res() : requestAnimationFrame(f));
+      f();
     });
-    return { fresh, turned, turnAt, open: p.hasAttribute('open'), leaving: p.hasAttribute('data-leaving') };
+    const turn = {};
+    const turned = await series(700, () => {
+      p.close();
+      // turn on the exit's own clock, 300ms into 1000. a setTimeout that fired after a stall reopened
+      // from the away frame: a fresh enter, which proves nothing (¬‿¬). registered before the
+      // sampler, so this runs first in each frame and the frame's sample is the turned box
+      const f = () => {
+        const a = box.getAnimations().find((x) => x.id === 'gs-move:exit');
+        if (a !== undefined && a.currentTime < 300) {
+          requestAnimationFrame(f);
+          return;
+        }
+        turn.at = performance.now();
+        turn.from = Number(getComputedStyle(box).opacity);
+        turn.inExit = a !== undefined && p.hasAttribute('data-leaving');
+        p.open();
+      };
+      requestAnimationFrame(f);
+    });
+    return { fresh, turned, ...turn, open: p.hasAttribute('open'), leaving: p.hasAttribute('data-leaving') };
   }, opacitySeries.toString());
   const steps = (xs) => xs.slice(1).map((v, i) => Math.abs(v.o - xs[i].o));
-  const before = r.turned.filter((s) => s.t <= r.turnAt);
-  const after = r.turned.filter((s) => s.t > r.turnAt);
-  expect(Math.min(...after.map((s) => s.o))).toBeGreaterThanOrEqual(before.at(-1).o - Math.max(0, ...steps(before)) - 0.01);
+  expect(r.inExit, 'the turn has to land inside the exit, or this is just a fresh enter').toBe(true);
+  const after = r.turned.filter((s) => s.t > r.at);
+  expect(after.length).toBeGreaterThan(0);
+  expect(Math.min(...after.map((s) => s.o))).toBeGreaterThanOrEqual(r.from - 0.01);
   expect(Math.max(...steps(r.turned))).toBeLessThanOrEqual(Math.max(...steps(r.fresh)) + 0.01);
   expect(r.open).toBe(true);
   expect(r.leaving).toBe(false);
@@ -6783,10 +6809,6 @@ test('glitch 0 still slides the palette in', async ({ page }) => {
   expect(ids).toEqual(['gs-move:enter']);
 });
 
-// the exit is 100ms and a key press is a round trip, so a slow runner could land the second key
-// after the exit and pass for nothing. stretch the exit so every second key lands inside it, and
-// read data-leaving after it to prove it did
-const slowExit = (page) => page.addStyleTag({ content: ':root { --gs-motion-exit: 1000ms !important; }' });
 // a fixed sleep before the first key isn't enough: on a loaded runner an enter can still sit pending
 // at currentTime 0, holding its away frame. a key then takes over from there, the exit's trip is 0,
 // it resolves at once and data-leaving is gone before the proof reads it. motion.js cancels every
