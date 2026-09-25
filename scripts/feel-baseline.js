@@ -110,6 +110,8 @@ function analyze(events, startName, endName) {
   });
   const inside = tasks.filter((t) => t.ts >= start && t.ts <= end);
   return {
+    pid,
+    tid,
     cpu,
     stalls: inside.filter((t) => t.dur > 50_000 && t.tdur <= 50_000).length,
     drops: events.filter((e) => e.name === 'PipelineReporter' && e.ph === 'b' && e.pid === pid && e.ts >= start && e.ts <= end
@@ -153,12 +155,21 @@ async function oneRun(browser, index) {
     return { calOn };
   });
   await context.close();
-  const a = analyze(events, 'baseline:start', 'baseline:end');
+  const { pid, tid, ...a } = analyze(events, 'baseline:start', 'baseline:end');
   // these checks live here, outside analyze(), because task 2 swaps analyze() for trace.js whole.
   // a window with no frames or a trace with no reporter reads as 0 over budget and 0 drops, the
   // greenest possible lie. a chromium bump that renames a category would produce exactly that >:[
   if (a.cpu.length === 0) throw new Error(`run ${index}: no BeginMainThreadFrame between baseline:start and baseline:end. the trace format moved`);
   if (!events.some((e) => e.name === 'PipelineReporter')) throw new Error(`run ${index}: trace has no PipelineReporter events, so 0 drops would mean no reporter, not no drops`);
+  // every cpu bucket is a sum of main-thread RunTask tdur. lose RunTask and each bucket sums to 0,
+  // which reads as the fastest page ever measured. read the raw events so the check outlives analyze()
+  if (!events.some((e) => e.name === 'RunTask' && e.ph === 'X' && e.pid === pid && e.tid === tid && typeof e.tdur === 'number')) {
+    throw new Error(`run ${index}: no RunTask with tdur on the renderer main thread, so 0 over budget would mean no tasks, not a fast page`);
+  }
+  // frames exist and timed tasks exist, so a window where every bucket still sums to 0 means the join
+  // between them broke (a filter, a pid, a tid). that's the script lying about the page (｡◕‿↼)
+  // the cpu.length guard above has to run first: every() on no frames is true
+  if (a.cpu.every((c) => c === 0)) throw new Error(`run ${index}: ${a.cpu.length} frames and every cpu bucket is 0, so tasks and frames aren't being joined, not a free page`);
   return { index, steady, calOff: calOff.ms, calOn: out.calOn.ms, ...a };
 }
 
