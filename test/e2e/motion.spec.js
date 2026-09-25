@@ -384,3 +384,58 @@ for (const { op, plainAt } of CARRY) {
     expect(r.left).toBe(0);
   });
 }
+
+test('the indicator lands on the current tab without sliding in, then slides by transition', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const tabs = document.getElementById('tabs');
+    window.motion.indicator(tabs);
+    const bar = tabs.querySelector('[part="indicator"]');
+    const [a, , c] = tabs.querySelectorAll('button');
+    const first = { anims: bar.getAnimations().length, transform: bar.style.transform, want: `translateX(${a.offsetLeft}px) scaleX(${a.offsetWidth / 100})` };
+    a.removeAttribute('aria-current');
+    c.setAttribute('aria-current', 'page');
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    const moving = bar.getAnimations().map((x) => ({ kind: x.constructor.name, property: x.transitionProperty }));
+    return { first, moving, hiddenAttr: bar.hidden, axis: bar.dataset.axis };
+  });
+  expect(r.first.anims).toBe(0);
+  expect(r.first.transform).toBe(r.first.want);
+  expect(r.moving).toEqual([{ kind: 'CSSTransition', property: 'transform' }]);
+  expect(r.hiddenAttr).toBe(false);
+  expect(r.axis).toBe('x');
+});
+
+test('the indicator retargets mid slide from where it is, with no jump', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const tabs = document.getElementById('tabs');
+    window.motion.indicator(tabs);
+    const bar = tabs.querySelector('[part="indicator"]');
+    const [a, b, c] = tabs.querySelectorAll('button');
+    const x = () => new DOMMatrixReadOnly(getComputedStyle(bar).transform).m41;
+    const pick = (el) => {
+      for (const t of [a, b, c]) t.removeAttribute('aria-current');
+      el.setAttribute('aria-current', 'page');
+    };
+    const series = (ms) => new Promise((resolve) => {
+      const out = [];
+      const t0 = performance.now();
+      const f = () => {
+        out.push(x());
+        if (performance.now() - t0 < ms) requestAnimationFrame(f);
+        else resolve(out);
+      };
+      requestAnimationFrame(f);
+    });
+    pick(c);
+    const fresh = await series(250);
+    pick(a);
+    await series(250);
+    pick(c);
+    setTimeout(() => pick(b), 50);
+    const turned = await series(300);
+    return { fresh, turned, target: b.offsetLeft };
+  });
+  const steps = (xs) => xs.slice(1).map((v, i) => Math.abs(v - xs[i]));
+  expect(Math.max(...steps(r.turned))).toBeLessThanOrEqual(Math.max(...steps(r.fresh)) + 2);
+  expect(r.turned.at(-1)).toBeCloseTo(r.target, 0);
+});

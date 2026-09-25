@@ -174,6 +174,12 @@ textarea { resize: vertical; min-height: 4em; }
 /* the hairline under a sticky header. motion.css fades it in with scroll; without motion it just shows */
 .gs-scroll-edge { display: block; height: 1px; background-color: var(--gs-color-hairline); }
 
+/* the bar motion.js places. it travels and stretches along data-axis inside a position: relative
+   container, from a 100px base; the cross axis is set here */
+[part="indicator"] { position: absolute; left: 0; top: 0; pointer-events: none; transform-origin: 0 0; }
+[part="indicator"][data-axis="x"] { top: auto; bottom: 0; width: 100px; height: var(--gs-bar); background-color: var(--gs-color-accent); }
+[part="indicator"][data-axis="y"] { width: var(--gs-bar); height: 100px; background-color: var(--gs-color-accent); }
+
 /* components. light dom, so every rule is a plain attribute selector */
 
 gs-mosaic, gs-face { display: inline-block; line-height: 0; }

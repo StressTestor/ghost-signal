@@ -289,3 +289,49 @@ export function drawer({ height = 0, duration = 'shift', easing = 'move' } = {})
     get finished() { return done; },
   };
 }
+
+// one sliding bar under the current item. it travels and stretches along one axis from a 100px
+// base inside one transform; the cross axis comes from css, so a 3px bar stays 3px. the slide is
+// the css transition in motion.css, which retargets natively when a held key moves it 30 times a
+// second. first placement uses data-gs-still, so it never slides in from 0
+export function indicator(container, { selector = '[aria-current="page"], [aria-current="true"], [aria-selected="true"]', axis = 'x' } = {}) {
+  const bar = document.createElement('span');
+  bar.setAttribute('part', 'indicator');
+  bar.setAttribute('aria-hidden', 'true');
+  bar.dataset.axis = axis;
+  container.prepend(bar);
+  let placed = false;
+  const place = () => {
+    const item = container.querySelector(selector);
+    bar.hidden = item === null;
+    if (item === null || container.offsetWidth === 0) {
+      placed = false;
+      return;
+    }
+    const t = axis === 'y'
+      ? `translateY(${item.offsetTop}px) scaleY(${item.offsetHeight / 100})`
+      : `translateX(${item.offsetLeft}px) scaleX(${item.offsetWidth / 100})`;
+    if (placed === false) {
+      bar.setAttribute('data-gs-still', '');
+      bar.style.transform = t;
+      void getComputedStyle(bar).transform; // style resolves with transitions off, so this placement cuts
+      bar.removeAttribute('data-gs-still');
+      placed = true;
+      return;
+    }
+    if (bar.style.transform !== t) bar.style.transform = t;
+  };
+  const mo = new MutationObserver(place);
+  mo.observe(container, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-current', 'aria-selected'] });
+  const ro = new ResizeObserver(place);
+  ro.observe(container);
+  place();
+  return {
+    update: place,
+    disconnect() {
+      mo.disconnect();
+      ro.disconnect();
+      bar.remove();
+    },
+  };
+}

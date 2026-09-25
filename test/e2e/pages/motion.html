@@ -10,6 +10,7 @@
   <style>
     #box { width: 120px; height: 40px; margin: 40px; background-color: var(--gs-color-raised); }
     .row { height: 28px; line-height: 28px; border-bottom: var(--gs-border); }
+    .tabs { position: relative; display: flex; gap: 8px; margin: 16px; }
   </style>
   <script type="module">
     import * as motion from '../../../src/motion.js';
@@ -19,6 +20,7 @@
 </head>
 <body>
   <div id="box"></div>
+  <nav id="tabs" class="tabs" aria-label="views"><button aria-current="page">one</button><button>two</button><button>three wide</button></nav>
   <div id="list"><div class="row">a</div><div class="row">b</div><div class="row">c</div><div class="row">d</div></div>
 </body>
 </html>
