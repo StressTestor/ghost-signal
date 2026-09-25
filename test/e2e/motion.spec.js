@@ -173,7 +173,8 @@ test('drawer: playing over a row mid flip takes the flip over from where the row
     const list = document.getElementById('list');
     const rows = [...list.children];
     window.motion.flip(rows, () => list.prepend(Object.assign(document.createElement('div'), { className: 'row', textContent: 'new' })));
-    await new Promise((res) => setTimeout(res, 50));
+    // seeked, not waited on: 50ms into the flip on any runner, however late a timer would fire
+    for (const el of rows) for (const a of el.getAnimations()) a.currentTime = 50;
     const d = window.motion.drawer({ height: 28 });
     const before = yOf(rows[1]);
     const done = d.play({ inner: rows[0], followers: rows.slice(1), open: true, from: 0.9 });
@@ -197,10 +198,11 @@ test('drawer: adopting rebuilt nodes mid flip keeps each one where it is', async
     const [a, b, c, e] = [...document.getElementById('list').children];
     const d = window.motion.drawer({ height: 28 });
     d.play({ inner: null, followers: [a, b], open: true, from: 0 });
-    await new Promise((res) => setTimeout(res, 60));
+    // seeked, not waited on, so a busy runner can't let the drawer land first
+    for (const el of [a, b]) for (const x of el.getAnimations()) x.currentTime = 60;
     // c and e stand in for the rebuilt a and b. c is mid flip when the drawer adopts it
     window.motion.flip([c], () => { c.style.marginTop = '20px'; });
-    await new Promise((res) => requestAnimationFrame(res));
+    for (const x of c.getAnimations()) x.currentTime = 16;
     const drawerAt = yOf(a);
     const cBefore = yOf(c);
     const eBefore = yOf(e);
@@ -227,11 +229,11 @@ test('drawer: a helper that cancels one of its moves still leaves nothing attach
     const rows = [...document.getElementById('list').children];
     const d = window.motion.drawer({ height: 28 });
     d.play({ inner: rows[0], followers: [rows[1], rows[2]], open: false, from: 1 });
-    await new Promise((res) => setTimeout(res, 50));
+    for (const el of rows.slice(0, 3)) for (const a of el.getAnimations()) a.currentTime = 50;
     // flip's sweep cancels any gs-move:* on its targets, the drawer's included, and plays the row home
     // from where the drawer left it
     window.motion.flip([rows[1]], () => {});
-    const settled = await Promise.race([d.finished.then((v) => ({ v })), new Promise((res) => setTimeout(() => res('hung'), 600))]);
+    const settled = await Promise.race([d.finished.then((v) => ({ v })), new Promise((res) => setTimeout(() => res('hung'), 2000))]);
     const ids = rows.slice(0, 3).map((el) => el.getAnimations().map((a) => a.id));
     return { settled, running: d.running, progress: d.progress, ids, inner: getComputedStyle(rows[0]).transform };
   });
