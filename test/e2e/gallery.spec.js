@@ -246,11 +246,18 @@ test.describe('reduced motion', () => {
 test('hover color is a cut: hovering and pressing a control starts no transition', async ({ page }) => {
   await open(page);
   await page.evaluate(() => window.gallery.setGlitch(0));
+  // the shipped hover token is 0ms and a 0ms transition never spawns a CSSTransition, so a
+  // transition line that sneaks back would be inert here. force the token long enough to still be
+  // running when we count, and the leftover shows up (¬‿¬)
+  await page.addStyleTag({ content: ':root { --gs-motion-hover: 1000ms !important; }' });
   const button = page.locator('#controls button').first();
   await button.hover();
   await page.mouse.down();
   const transitions = await page.evaluate(() => document.getAnimations().filter((a) => a instanceof CSSTransition).length);
+  // read the press while it's held. after mouse.up() every version of the css says none
+  const held = await button.evaluate((el) => getComputedStyle(el).transform);
   await page.mouse.up();
   expect(transitions).toBe(0);
+  expect(held).toBe('matrix(1, 0, 0, 1, 0, 1)');
   expect(await button.evaluate((el) => getComputedStyle(el).transform)).toBe('none');
 });
