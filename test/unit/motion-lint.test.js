@@ -40,6 +40,48 @@ test('a finding names the file, the rule and the culprit', async () => {
   assert.deepEqual(await lint('transition-all.css'), ['transition-all.css: transition property: .card transitions all']);
 });
 
+test('every branch of a selector list carries the gate on :root, and a negated gate is no gate', async () => {
+  assert.deepEqual(await lint('ungated-list.css'), [
+    'ungated-list.css: ungated event: .poke-too runs sn-event-poke outside :root[data-glitch="1"] or "2"',
+  ]);
+  const ev = 'animation: sn-event-poke 180ms steps(3) 1;';
+  assert.deepEqual(rulesOf(lintMotion(`.p, :root[data-glitch="1"] .q { ${ev} }`, 'i.css')), ['ungated event']);
+  assert.deepEqual(rulesOf(lintMotion(`:root:not([data-glitch="1"]) .p { ${ev} }`, 'i.css')), ['ungated event']);
+  assert.deepEqual(rulesOf(lintMotion(`.p[data-glitch="1"] { ${ev} }`, 'i.css')), ['ungated event']);
+  assert.deepEqual(lintMotion(`:root[data-glitch='1'] .p, :root[data-theme="dark"][data-glitch="2"] .p { ${ev} }`, 'i.css'), []);
+  assert.deepEqual(lintMotion(`:root:not(.x)[data-glitch="1"] .p { ${ev} }`, 'i.css'), []);
+});
+
+test('each animation in a list is judged by its own timing', () => {
+  assert.deepEqual(rulesOf(lintMotion(':root[data-glitch="1"] .a { animation: sn-event-poke 180ms ease-out 1, sn-spatial-slide 200ms steps(2) 1; }', 'i.css')), ['event eased', 'spatial stepped']);
+  assert.deepEqual(lintMotion(':root[data-glitch="1"] .a { animation: sn-event-poke 180ms steps(3) 1, sn-spatial-slide 200ms ease-out 1; }', 'i.css'), []);
+});
+
+test('the timing longhand is paired with the name longhand, and the later declaration wins', async () => {
+  assert.deepEqual(rulesOf(await lint('event-longhand.css')), ['event eased']);
+  assert.deepEqual(rulesOf(await lint('spatial-longhand.css')), ['spatial stepped']);
+  const g = ':root[data-glitch="1"] .a';
+  assert.deepEqual(lintMotion(`${g} { animation-name: sn-event-poke, sn-spatial-slide; animation-timing-function: steps(3), ease-out; }`, 'i.css'), []);
+  assert.deepEqual(rulesOf(lintMotion(`${g} { animation: sn-event-poke 180ms steps(3) 1; animation-timing-function: ease-out; }`, 'i.css')), ['event eased']);
+  assert.deepEqual(lintMotion(`${g} { animation-timing-function: ease-out; animation: sn-event-poke 180ms steps(3) 1; }`, 'i.css'), []);
+  // a name with no timing in the same rule may take its timing from another rule: not judged here
+  assert.deepEqual(lintMotion(`${g} { animation-name: sn-event-poke; }`, 'i.css'), []);
+});
+
+test('a timing inside a keyframe block is judged by the keyframes family, except on the last keyframe', async () => {
+  assert.deepEqual(await lint('event-mixed.css'), [
+    'event-mixed.css: event eased: @keyframes sn-event-mixed eases a step with ease-out',
+  ]);
+  assert.deepEqual(rulesOf(lintMotion('@keyframes sn-spatial-x { 0% { transform: none; animation-timing-function: steps(2); } 100% { transform: translateX(4px); } }', 'i.css')), ['spatial stepped']);
+  assert.deepEqual(lintMotion('@keyframes sn-event-x { 0% { transform: none; animation-timing-function: step-end; } to { transform: translateX(4px); animation-timing-function: ease; } }', 'i.css'), []);
+});
+
+test('step-end and step-start are stepped', () => {
+  assert.deepEqual(lintMotion(':root[data-glitch="1"] .p { animation: sn-event-poke 200ms step-end 1; }', 'i.css'), []);
+  assert.deepEqual(rulesOf(lintMotion('.b { transition: transform 200ms step-end; }', 'i.css')), ['spatial stepped']);
+  assert.deepEqual(rulesOf(lintMotion('.b { transition: opacity 200ms; transition-timing-function: step-start; }', 'i.css')), ['spatial stepped']);
+});
+
 test('the cli exits 1 with findings, 0 and silent when clean, 2 when nothing matched', async () => {
   const bad = await run(process.execPath, [bin, 'lint-motion', `${dir}event-eased.css`]).catch((e) => e);
   assert.equal(bad.code, 1);
