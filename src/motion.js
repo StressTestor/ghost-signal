@@ -177,7 +177,7 @@ export function drawer({ height = 0, duration = 'shift', easing = 'move' } = {})
   let h = height;
   let anims = [];
   let opening = true;
-  let last = { inner: null, followers: [], from: 0 };
+  let last = { inner: null, followers: [], from: 0, h };
   let done = Promise.resolve(true);
 
   // the drawer's own clock, never a node's transform: a flip can own any one node, and a carried
@@ -191,11 +191,33 @@ export function drawer({ height = 0, duration = 'shift', easing = 'move' } = {})
     return opening ? last.from + (1 - last.from) * e : last.from * (1 - e);
   };
 
+  // what a node carries on top of the drawer's own curve right now: an offset a ride took over
+  // from a flip or a slide, still fading out on the drawer's frames. read before anything is
+  // cancelled, since the cancel is what drops it. the plain curve comes from the run that's live:
+  // its direction, its height (a play can hand in a new one) and the part the node played in it
+  function residues(incoming) {
+    const out = new Map();
+    if (live() === undefined) return out;
+    const p = progress();
+    for (const a of anims) {
+      const el = a.effect?.target;
+      if (a.playState === 'idle' || incoming.has(el) === false || out.has(el)) continue;
+      // named twice, the follower move is the later one and wins the composite
+      const own = opening || last.followers.includes(el) === false ? -(1 - p) * last.h : p * last.h;
+      const r = translateOf(getComputedStyle(el).transform).y - own;
+      // matrix read noise stays 0, so a plain node keeps its two keyframes
+      out.set(el, Math.abs(r) < 0.01 ? 0 : r);
+    }
+    return out;
+  }
+
   function start({ inner, followers, open, from, currentTime = 0 }) {
+    const nodes = inner === null ? followers : [inner, ...followers];
+    const residue = residues(new Set(nodes));
     for (const a of anims) a.cancel();
     anims = [];
     opening = open;
-    last = { inner, followers: [...followers], from };
+    last = { inner, followers: [...followers], from, h };
     if (motionAllowed() === false || h <= 0) {
       done = Promise.resolve(true);
       return done;
@@ -206,10 +228,12 @@ export function drawer({ height = 0, duration = 'shift', easing = 'move' } = {})
       return done;
     }
     // a flip or a slide still moving one of these nodes stops here, and the offset it had rides the
-    // drawer's frames: the latest intent wins, from where the node is (spec 3.2, 6.2). all read before
-    // any animate, so a node named twice never takes over the drawer's own move (¬‿¬)
+    // drawer's frames: the latest intent wins, from where the node is (spec 3.2, 6.2). a node the
+    // last run was already carrying keeps its residue the same way, or a reverse drops a row-sized
+    // flip in one frame. all read before any animate, so a node named twice never takes over the
+    // drawer's own move (¬‿¬)
     const carried = new Map();
-    for (const el of inner === null ? followers : [inner, ...followers]) if (carried.has(el) === false) carried.set(el, takeOver(el)?.y ?? 0);
+    for (const el of nodes) if (carried.has(el) === false) carried.set(el, takeOver(el)?.y ?? residue.get(el) ?? 0);
     const y = (v) => ({ transform: `translateY(${v}px)` });
     const options = { duration: time, easing: token(`--gs-ease-${easing}`) || 'linear', id: 'gs-move:drawer', fill: open ? 'none' : 'forwards' };
     const ride = (el, a, b) => {

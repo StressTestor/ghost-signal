@@ -338,3 +338,49 @@ test('flip: a keyed rebuild that adopts the drawer inside mutate starts every fr
   for (const [i, top] of r.now.entries()) expect(top).toBeCloseTo(r.was[i], 0);
   expect(r.ids).toEqual([['gs-move:flip'], ['gs-move:flip'], ['gs-move:flip'], ['gs-move:flip']]);
 });
+// seance flips live rows by added * ROW_H, so a row the drawer took over can carry a row-sized
+// offset. `plain` pins the drawer's own curve after the call: a residue read against the wrong
+// part, direction or height moves both rows by the same amount, and only the plain one shows it
+const CARRY = [
+  { op: 'reverse', plainAt: (p) => p * 28 },
+  { op: 'play closed', plainAt: (p) => p * 28 },
+  { op: 'play taller', plainAt: (p) => -(1 - p) * 56 },
+  { op: 'reverse twice', plainAt: (p) => -(1 - p) * 28 },
+];
+for (const { op, plainAt } of CARRY) {
+  test(`drawer: a ${op} over a live run keeps the offset a row still carries from a flip it took over`, async ({ page }) => {
+    const r = await page.evaluate(async (op) => {
+      const yOf = (el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).m42;
+      const rows = [...document.getElementById('list').children];
+      const [, plain, carried] = rows;
+      const followers = [plain, carried];
+      window.motion.flip([carried], () => { carried.style.marginTop = '84px'; });
+      for (const a of carried.getAnimations()) a.currentTime = 16;
+      const d = window.motion.drawer({ height: 28 });
+      d.play({ inner: null, followers, open: true, from: 0 });
+      for (const el of rows) for (const a of el.getAnimations()) a.currentTime = 40;
+      // the second reverse reads the residue off a closing run
+      if (op === 'reverse twice') {
+        d.reverse();
+        for (const el of rows) for (const a of el.getAnimations()) a.currentTime = 20;
+      }
+      const p = d.progress;
+      const before = yOf(carried) - yOf(plain);
+      if (op === 'play closed') d.play({ inner: null, followers, open: false });
+      else if (op === 'play taller') d.play({ inner: null, followers, open: true, height: 56 });
+      else d.reverse();
+      const after = yOf(carried) - yOf(plain);
+      const plainY = yOf(plain);
+      const ids = carried.getAnimations().map((a) => a.id);
+      const ok = await d.finished;
+      return { p, before, after, plainY, ids, ok, left: rows.flatMap((el) => el.getAnimations()).length };
+    }, op);
+    // the flip's offset is still riding the drawer at the call, well over a pixel
+    expect(r.before).toBeLessThan(-3);
+    expect(Math.abs(r.after - r.before)).toBeLessThan(0.5);
+    expect(Math.abs(r.plainY - plainAt(r.p))).toBeLessThan(0.5);
+    expect(r.ids).toEqual(['gs-move:drawer']);
+    expect(r.ok).toBe(true);
+    expect(r.left).toBe(0);
+  });
+}
