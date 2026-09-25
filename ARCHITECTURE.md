@@ -178,6 +178,11 @@ or `gallery/`.
   install --only-shell chromium`); running the tests on node 26 afterwards is fine.
 - problem: `flavor build` throws instead of writing files. cause: it runs `check` internally first.
   fix: read the reported line, fix the manifest or flavor file, re-run.
+- problem: `lint-motion` exits 2 with "nested rules aren't supported". cause: it reads sheets
+  through the flat `cssRules` walker, which would glue a parent's declarations onto a nested
+  rule's selector and drop an `@media` written inside a rule, so a nested sheet would lint clean
+  without being read. fix: flatten the sheet (write each rule's full selector at the top level or
+  inside plain `@media` / `@supports`), then lint again.
 - problem: `gs-decode` renders empty text. cause: its text only comes from the `text` attribute;
   child text content is read once on first connect and never again. fix: set the `text` attribute,
   not element children.

@@ -1,0 +1,5 @@
+:root[data-glitch="1"] .poke {
+  animation: sn-event-poke 200ms ease-out 1;
+  &:hover { opacity: 1; }
+}
+@keyframes sn-event-poke { from { transform: translateX(0); } to { transform: translateX(2px); } }

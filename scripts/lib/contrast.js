@@ -43,14 +43,19 @@ export function checkTokens(tokens) {
 }
 
 // minimal css rule walker: enough for our own sheets. handles nested @media and @supports and
-// records them as parents; @keyframes percent blocks come back as rules whose parent is the @keyframes prelude
+// records them as parents; @keyframes percent blocks come back as rules whose parent is the @keyframes prelude.
+// flat sheets only: a style rule nested in another comes back glued to its parent's declarations
 export function cssRules(css) {
   const out = [];
   const src = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const stack = [];
   let buf = '';
   for (const ch of src) {
-    if (ch === '{') {
+    if (ch === ';' && (stack.length === 0 || stack.at(-1).startsWith('@'))) {
+      // outside a style rule a ';' ends a statement (@import, @charset, @layer a, b). without this
+      // reset it glues onto the next prelude, which then starts with '@' and the rule vanishes
+      buf = '';
+    } else if (ch === '{') {
       stack.push(buf.trim());
       buf = '';
     } else if (ch === '}') {

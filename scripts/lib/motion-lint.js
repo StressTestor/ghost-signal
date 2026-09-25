@@ -45,14 +45,45 @@ const dropNot = (selector) => {
   }
   return out;
 };
-const GATE = /^:root[^\s>+~]*\[data-glitch\s*=\s*(["']?)[12]\1\s*\]/;
+// the prefix stops at '(' so a gate inside :has(), :is() or :where() never counts: :has() checks a
+// descendant, and :is(gate, .x) runs the event under .x at glitch 0. :not(...) is already gone by now
+const GATE = /^:root[^\s>+~(]*\[data-glitch\s*=\s*(["']?)[12]\1\s*\]/;
 // every branch of a selector list has to carry the gate on :root. one bare branch and the event
 // runs at glitch 0 while its gated sibling looks innocent (¬‿¬)
 const ungated = (selector) => splitTop(selector).filter((branch) => GATE.test(dropNot(branch)) === false);
 // the keyframes name one animation of a list runs. a var() is skipped so --x-event-y never reads as a name
 const nameOf = (part) => part.replace(/var\([^()]*\)/g, '').match(NAMED)?.[0];
 
+export const NESTED = 'ERR_LINT_MOTION_NESTED';
+// cssRules reads flat sheets only. css nesting hands it a parent's declarations glued to the child's
+// selector, and an @media inside a rule vanishes whole, so a nested sheet would lint clean unread.
+// refuse it at the first '{' that opens inside a style rule. same comment strip and ';' rule as cssRules
+function assertFlat(css, file) {
+  const stack = [];
+  let buf = '';
+  for (const ch of css.replace(/\/\*[\s\S]*?\*\//g, '')) {
+    if (ch === ';' && (stack.length === 0 || stack.at(-1).startsWith('@'))) {
+      buf = '';
+    } else if (ch === '{') {
+      const prelude = buf.trim();
+      const outer = stack.find((s) => s.startsWith('@') === false);
+      if (outer !== undefined) {
+        const inner = prelude.slice(prelude.lastIndexOf(';') + 1).trim();
+        throw Object.assign(new Error(`lint-motion: nested rules aren't supported (${file}: ${inner} inside ${outer}), flatten them`), { code: NESTED });
+      }
+      stack.push(prelude);
+      buf = '';
+    } else if (ch === '}') {
+      stack.pop();
+      buf = '';
+    } else {
+      buf += ch;
+    }
+  }
+}
+
 export function lintMotion(css, file) {
+  assertFlat(css, file);
   const findings = [];
   const say = (rule, detail) => findings.push(`${file}: ${rule}: ${detail}`);
   const rules = cssRules(css);

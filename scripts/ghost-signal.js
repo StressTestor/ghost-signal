@@ -3,7 +3,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { check, flavorBuild } from './lib/cli.js';
-import { lintMotion, expandGlobs } from './lib/motion-lint.js';
+import { lintMotion, expandGlobs, NESTED } from './lib/motion-lint.js';
 
 const USAGE = [
   'usage:',
@@ -37,7 +37,14 @@ async function main(argv) {
       return 2;
     }
     const findings = [];
-    for (const f of files) findings.push(...lintMotion(await readFile(f, 'utf8'), f));
+    try {
+      for (const f of files) findings.push(...lintMotion(await readFile(f, 'utf8'), f));
+    } catch (err) {
+      // a sheet the lint can't read is a usage error, never a clean pass and never a finding
+      if (err.code !== NESTED) throw err;
+      process.stderr.write(`${err.message}\n`);
+      return 2;
+    }
     // silent when clean: a check that prints on success becomes wallpaper
     if (findings.length > 0) {
       process.stdout.write(`${findings.join('\n')}\n`);
