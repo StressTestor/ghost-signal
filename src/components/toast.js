@@ -23,23 +23,32 @@ export function stackOffsets(heights, gap) {
 export class GsToast extends Base {
   #onEvent = (e) => this.toast(e.detail ?? {});
   #timers = new Set();
+  // offsets come from heights, so any height change after the insert (a resize rewrapping a sticky
+  // toast, a zoom, a toast added while hidden) restacks. the restack only writes translateY, which
+  // never changes a slot's box, so the observer can't feed itself (¬‿¬). node has no ResizeObserver
+  #ro = globalThis.ResizeObserver ? new ResizeObserver(() => this.#restack()) : null;
 
   connectedCallback() {
     this.setAttribute('aria-live', 'polite');
     document.addEventListener('gs-toast', this.#onEvent);
+    // disconnect dropped every observation, and a toast added while detached read every height as 0
+    for (const slot of this.#slots()) this.#ro?.observe(slot);
+    this.#restack();
   }
 
   disconnectedCallback() {
     document.removeEventListener('gs-toast', this.#onEvent);
     for (const timer of this.#timers) clearTimeout(timer);
     this.#timers.clear();
+    this.#ro?.disconnect();
   }
 
   #slots() {
     return [...this.querySelectorAll(':scope > [part="slot"]')].filter((s) => s.hasAttribute('data-leaving') === false);
   }
 
-  // one forced layout per insert or removal: every height read together, then every offset written
+  // one forced layout per insert, removal or slot resize: every height read together, then every
+  // offset written
   #restack() {
     const slots = this.#slots();
     const gap = parseFloat(getComputedStyle(this).getPropertyValue('--gs-space-2')) || 8;
@@ -50,6 +59,7 @@ export class GsToast extends Base {
   }
 
   #dismiss(slot) {
+    this.#ro?.unobserve(slot);
     slot.remove();
     this.#restack();
   }
@@ -96,6 +106,7 @@ export class GsToast extends Base {
     }
 
     this.append(slot);
+    this.#ro?.observe(slot);
     this.#restack();
     // fx play on the item, never the slot: the slot's transform is its stack place (one carrier)
     if (s === 'bypass') glitchOnce(item);
