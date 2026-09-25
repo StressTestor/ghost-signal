@@ -34,9 +34,19 @@ export const feelUse = Object.freeze({
   screenshot: 'off',
 });
 
+// workers: 1 rides along so a consumer with a parallel config still runs feel specs alone. a second
+// worker inside the budgets is jank the harness would pin on the app (spec 8.1, 11)
 export function feelProject(overrides = {}) {
   const { use, ...rest } = overrides;
-  return { name: 'feel', testMatch: '*.feel.js', retries: 0, fullyParallel: false, ...rest, use: { ...feelUse, ...(use ?? {}) } };
+  return { name: 'feel', testMatch: '*.feel.js', retries: 0, fullyParallel: false, workers: 1, ...rest, use: { ...feelUse, ...(use ?? {}) } };
+}
+
+// measure() and selfTest() arm on a page that has lived a while. its earlier shifts happened before
+// anyone was watching, so only what landed after arm() is judged. scenario() keeps load shifts:
+// every run there starts from its own goto
+function sinceArm(samples) {
+  if (typeof samples.armedAt !== 'number') throw new GsFeelUnevaluable('the probe returned no arm time, so its shifts can not be cut to the window');
+  return { ...samples, shifts: samples.shifts.filter((s) => s.startTime >= samples.armedAt) };
 }
 
 const requireWhy = (why, what) => {
@@ -241,7 +251,7 @@ function createFeel(page, testInfo, base) {
       return {
         async stop() {
           await page.evaluate((t) => window.__gsFeel.stepEnd(t), base.settle);
-          const samples = await page.evaluate(() => window.__gsFeel.disarm());
+          const samples = sinceArm(await page.evaluate(() => window.__gsFeel.disarm()));
           const events = await tracer.stop();
           const run = evaluateRun(base, { index: 0, samples, trace: summarizeTrace(events), steady: null, calibration: 0 }, { mode });
           const structural = { ...run, steps: run.steps.map((s) => ({ ...s, frame: { worst: 0, over: [] }, input: null, task: { worst: 0, over: [], scripts: [] }, answer: null })) };
@@ -269,12 +279,15 @@ function createFeel(page, testInfo, base) {
       }
       const events = await tracer.stop();
       await page.evaluate(() => window.__gsFeel.unplant());
-      const run = evaluateRun(base, { index: 0, samples, trace: summarizeTrace(events), steady: null, calibration: 0 }, { mode: 'motion' });
-      const seen = new Set(run.deterministic.map((v) => v.check));
-      for (const s of run.steps) {
-        if ((s.input?.duration ?? 0) > base.input) seen.add('input');
-        if (s.task.worst > base.task) seen.add('task');
-      }
+      const run = evaluateRun(base, { index: 0, samples: sinceArm(samples), trace: summarizeTrace(events), steady: null, calibration: 0 }, { mode: 'motion' });
+      // each plant counts only on the step that planted it: a slow click on step 0, the row landing
+      // on step 1. a violation from anywhere else is the page's, and crediting it would let the
+      // harness pass on a bug it never saw XX
+      const click = run.steps.find((s) => s.index === 0);
+      const seen = new Set();
+      if ((click?.input?.duration ?? 0) > base.input) seen.add('input');
+      if ((click?.task.worst ?? 0) > base.task) seen.add('task');
+      if (run.deterministic.some((v) => v.check === 'shift' && v.step?.index === 1)) seen.add('shift');
       const missed = ['input', 'task', 'shift'].filter((c) => seen.has(c) === false);
       if (missed.length > 0) throw new GsFeelUnevaluable(`self test: the harness missed the planted ${missed.join(', ')}. nothing it says about this app counts until it sees a bug planted on purpose`);
       return { seen: [...seen].sort() };

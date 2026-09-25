@@ -11,7 +11,7 @@ export function installProbe() {
   const now = () => performance.now();
   const kebab = (k) => k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
   const state = {
-    armed: false, run: 0, mode: 'motion', allow: [], step: null, steps: [],
+    armed: false, armedAt: null, run: 0, mode: 'motion', allow: [], step: null, steps: [],
     events: [], shifts: [], shiftNodes: [], longtasks: [], loafs: [],
     animations: [], overlaps: [], overlapKeys: new Set(), calm: [],
     fcp: null, lastMutation: 0, seen: new WeakSet(), props: new WeakMap(), sink: 0,
@@ -279,6 +279,9 @@ export function installProbe() {
       el.setAttribute('aria-hidden', 'true');
       el.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;z-index:2147483647;opacity:0.01';
       for (const t of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click']) el.addEventListener(t, (e) => e.stopPropagation());
+      // mousedown's default moves focus to body, and setup may have placed it (the palette focuses
+      // its input on frame 0). the warm-up leaves focus exactly where it found it (¬‿¬)
+      el.addEventListener('mousedown', (e) => e.preventDefault());
       document.body.append(el);
     },
     unmountWarmup() {
@@ -308,9 +311,11 @@ export function installProbe() {
     },
     arm({ run, allowShift = [], mode = 'motion' }) {
       Object.assign(state, {
-        armed: true, run, mode, allow: allowShift, step: null, steps: [], events: [], longtasks: [], loafs: [],
+        armed: true, armedAt: now(), run, mode, allow: allowShift, step: null, steps: [], events: [], longtasks: [], loafs: [],
         animations: [], overlaps: [], overlapKeys: new Set(), calm: [], seen: new WeakSet(), lastMutation: 0,
       });
+      // shifts stay from page load on purpose: a scenario's fresh goto owns its load shifts. armedAt
+      // lets measure() and selfTest() cut theirs to the window they actually watched
       state.shifts.forEach((rec, i) => matchAllow(rec, state.shiftNodes[i]));
       // what already runs gets recorded now, for the property and family checks, and can never be
       // an answer: a scroll edge or an infinite loop would otherwise answer the first step's input
@@ -355,7 +360,7 @@ export function installProbe() {
     disarm() {
       state.armed = false;
       return JSON.parse(JSON.stringify({
-        version: VERSION, run: state.run, mode: state.mode, fcp: state.fcp, steps: state.steps,
+        version: VERSION, run: state.run, mode: state.mode, fcp: state.fcp, armedAt: state.armedAt, steps: state.steps,
         events: state.events, shifts: state.shifts, longtasks: state.longtasks, loafs: state.loafs,
         animations: state.animations, overlaps: state.overlaps, calm: state.calm,
       }));

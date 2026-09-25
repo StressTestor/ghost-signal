@@ -43,6 +43,68 @@ test('feel.measure() judges one window inside a functional spec: the clean inser
   expect(report.runs[0].seen.animations, 'the positive control: measure saw the flip').toBeGreaterThan(0);
 });
 
+// an unprompted 40px row above everything, landed from evaluate with no input anywhere near it
+const shiftNow = (page) => page.evaluate(() => {
+  const d = document.createElement('div');
+  d.style.height = '40px';
+  d.textContent = 'earlier';
+  document.body.prepend(d);
+});
+
+test('feel.measure() judges only its own window: a shift before it armed is not its business', async ({ page, feel }) => {
+  test.setTimeout(60_000);
+  await page.goto(url('clean'));
+  await page.evaluate(() => window.__gsFeel.ready());
+  await shiftNow(page);
+  await page.waitForTimeout(300);
+  const m = await feel.measure();
+  await page.waitForTimeout(50);
+  const report = await m.stop();
+  expect(report.result).toBe('pass');
+  expect(report.runs[0].seen.shifts, 'the earlier shift stays out of the window').toBe(0);
+});
+
+test('feel.selfTest() sees the planted shift on a page that already shifted', async ({ page, feel }) => {
+  test.setTimeout(60_000);
+  await page.goto(url('clean'));
+  await page.evaluate(() => window.__gsFeel.ready());
+  await shiftNow(page);
+  await page.waitForTimeout(700);
+  const result = await feel.selfTest();
+  expect(result.seen).toEqual(expect.arrayContaining(['input', 'shift', 'task']));
+});
+
+test('feel.selfTest() never credits an earlier shift for the planted one', async ({ page, feel }) => {
+  test.setTimeout(60_000);
+  await page.goto(url('untrusted'));
+  await page.evaluate(() => window.__gsFeel.ready());
+  await shiftNow(page);
+  await page.waitForTimeout(700);
+  // nothing left in flow, so the planted row lands and moves nothing
+  await page.evaluate(() => { for (const el of [...document.body.children]) if (el.localName !== 'script') el.remove(); });
+  await page.waitForTimeout(200);
+  const err = await feel.selfTest().then(() => null, (e) => e);
+  expect(err?.name).toBe('GsFeelUnevaluable');
+  expect(err.message).toContain('missed the planted shift');
+});
+
+test('the warm-up leaves focus where setup put it', async ({ page, feel }) => {
+  test.setTimeout(60_000);
+  const seen = [];
+  await feel.scenario('focus', {
+    setup: async () => {
+      await page.goto(url('untrusted'));
+      await page.locator('#b').focus();
+    },
+    steps: async (s) => {
+      seen.push(await page.evaluate(() => `${document.activeElement.localName}#${document.activeElement.id}`));
+      await s.idle('idle', 100);
+    },
+  });
+  expect(seen.length, 'the warm-up run and at least one measured run').toBeGreaterThanOrEqual(2);
+  for (const f of seen) expect(f, 'focus at the first step').toBe('button#b');
+});
+
 test('an input step driven by evaluate is unevaluable, never a pass', async ({ page, feel }) => {
   test.setTimeout(60_000);
   const err = await feel.scenario('untrusted', {
