@@ -126,6 +126,7 @@ flowchart LR
 - an unevaluable scenario attaches `feel-<scenario>-<matrix>.json` with `result: 'unevaluable'` next to the text (spec 7.9), and every report's runs carry their shifts, animations and answers, not only counts.
 - `scripts/sync-ghost-signal.sh` also copies `tokens.json`, since `src/feel/budgets.js` reads the budgets from it and a vendored copy without it can't run the harness (spec 7.1 assumed `src/` was enough).
 - the ci job's `timeout-minutes` goes from 20 to 40 (the step caps add up to 31 minutes plus setup), and both baseline steps get `continue-on-error: true`, since spec 8.6 calls them informational.
+- the family check judges an animation's curve segment by segment, not its list of easings. spec 7.7 calls 'event eased' "a signal animation with a non-`steps()` easing"; read literally over `getKeyframes()` that fails `0:steps(3) 1:ease`, whose `ease` sits on the last keyframe and covers no segment, and a step-end transition, whose keyframes read `linear` under a `steps(1)` effect. what's enforced is spec 3.2's intent: a signal fails when any part of its curve eases, a space animation fails when any part of it steps, and a curve with both fails in either family. the rows behind it are in task 3.
 
 ## file structure
 
@@ -187,7 +188,7 @@ ghost-signal/
 | module | exports |
 |---|---|
 | `src/feel/errors.js` | `GsFeelConfigError`, `GsFeelUnevaluable`, `GsFeelError` (has `.report`) |
-| `src/feel/budgets.js` | re-exports the three errors, `parseDuration(v)`, `loadBudgets(url?)`, `mergeBudgets(base, overrides)`, `isVsyncMiss(delta, interval, factor)`, `worstInteraction(entries)`, `isUnpromptedShift(shift, limit)`, `animatedProperties(record)`, `familyOf(record)`, `isStepped(easings)`, `BOOKKEEPING_KEYS` |
+| `src/feel/budgets.js` | re-exports the three errors, `parseDuration(v)`, `loadBudgets(url?)`, `mergeBudgets(base, overrides)`, `isVsyncMiss(delta, interval, factor)`, `worstInteraction(entries)`, `isUnpromptedShift(shift, limit)`, `animatedProperties(record)`, `familyOf(record)`, `isStepped(record)`, `isEased(record)`, `BOOKKEEPING_KEYS` |
 | `src/feel/trace.js` | `TRACE_CATEGORIES`, `COMPOSITE_IGNORED`, `rendererPid(events)`, `mainThread(events, pid)`, `topLevelTasks(events, pid, tid)`, `beginFrames(events, pid, tid)`, `childEvents(events, pid, tid)`, `compositeResults(events, pid)`, `decodeComposite(bits)`, `eventLatencies(events, pid)`, `userMarks(events, pid)`, `clockOffset(marks)`, `stepWindows(marks)`, `compositorDrops(events, pid)`, `summarizeTrace(events)`, `frameCosts(summary, start, end)` |
 | `src/feel/evaluate.js` | `REPORT_VERSION`, `TIMING_CHECKS`, `DROPS_GATE`, `evaluateRun(budgets, run, { mode })`, `needsThirdRun(budgets, runs)`, `combineRuns(budgets, runs, meta)` |
 | `src/feel/format.js` | `formatReport(report)` |
@@ -1279,7 +1280,7 @@ spec 5.4, 7.4 (only tighten), 7.7 (the rule functions), 9.2 `feel-budgets.test.j
 
 **Interfaces:**
 - Consumes: `src/feel/errors.js` (task 2).
-- Produces: `loadBudgets(url?)` returning a frozen `{ frame: 16.7, vsyncMiss: 1.5, input: 50, task: 50, answer: 50, shift: 0, settle: 1000, runs: 3, properties: ['transform', 'opacity'] }` (durations in ms). `mergeBudgets(base, overrides)`. rule functions: `isVsyncMiss(delta, interval, factor)`, `worstInteraction(entries)` returning the longest event timing entry among those sharing the worst interaction id (or `null`), `isUnpromptedShift(shift, limit)`, `animatedProperties(record)`, `familyOf(record)` returning `'signal' | 'space' | 'unclassified'`, `isStepped(easings)`. an animation record is `{ kind: 'css-animation' | 'css-transition' | 'web-animation', name, id, properties: string[], easings: string[] }` (the probe's shape, task 6).
+- Produces: `loadBudgets(url?)` returning a frozen `{ frame: 16.7, vsyncMiss: 1.5, input: 50, task: 50, answer: 50, shift: 0, settle: 1000, runs: 3, properties: ['transform', 'opacity'] }` (durations in ms). `mergeBudgets(base, overrides)`. rule functions: `isVsyncMiss(delta, interval, factor)`, `worstInteraction(entries)` returning the longest event timing entry among those sharing the worst interaction id (or `null`), `isUnpromptedShift(shift, limit)`, `animatedProperties(record)`, `familyOf(record)` returning `'signal' | 'space' | 'unclassified'`, `isStepped(record)` (any stepped segment: fails a space animation) and `isEased(record)` (any eased segment: fails a signal animation). a curve with both kinds of segment is both, so the two are not each other's negation. an animation record is `{ kind: 'css-animation' | 'css-transition' | 'web-animation', name, id, properties: string[], easings: string[], effectEasing: string, keyframes: { offset, easing }[] }` (the probe's shape, task 6). `easings` is the display list (deduped, `linear` dropped); `effectEasing` is `effect.getTiming().easing` and `keyframes` is `getKeyframes()` in order as `{ offset: computedOffset, easing }`, `linear` kept, and those two are what the predicates read.
 
 - [ ] **Step 1: add the feel group to tokens.json**
 
@@ -1314,7 +1315,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   GsFeelConfigError, parseDuration, loadBudgets, mergeBudgets, isVsyncMiss, worstInteraction,
-  isUnpromptedShift, animatedProperties, familyOf, isStepped,
+  isUnpromptedShift, animatedProperties, familyOf, isStepped, isEased,
 } from '../../src/feel/budgets.js';
 
 const LOOSEN = /budgets can only tighten\. declare an exemption on the step instead/;
@@ -1400,15 +1401,64 @@ test('familyOf: -event- is signal, -spatial-, transitions and gs-move:* are spac
   assert.equal(familyOf({ kind: 'css-animation', name: 'gs-glitch-shift', id: '' }), 'unclassified');
 });
 
-test('isStepped looks for a steps() easing', () => {
-  assert.equal(isStepped(['steps(3)']), true);
-  assert.equal(isStepped(['steps(6, end)']), true);
-  assert.equal(isStepped(['cubic-bezier(0.16, 1, 0.3, 1)']), false);
-  assert.equal(isStepped([]), false);
+// each row is what chromium 145 reported for a real animation (effect easing, then offset:easing per
+// keyframe), and whether its sampled curve was stepped, eased or both. css copies the shorthand onto
+// every keyframe, a transition or web animation carries it on the effect
+const curve = (effectEasing, kf) => ({
+  effectEasing,
+  keyframes: kf.split(' ').map((k) => {
+    const at = k.indexOf(':');
+    return { offset: Number(k.slice(0, at)), easing: k.slice(at + 1) };
+  }),
+});
+const CURVES = [
+  ['css steps(3)', curve('linear', '0:steps(3) 1:steps(3)'), 'stepped'],
+  ['css step-end', curve('linear', '0:steps(1) 1:steps(1)'), 'stepped'],
+  ['css ease-out', curve('linear', '0:ease-out 1:ease-out'), 'eased'],
+  ['css linear', curve('linear', '0:linear 1:linear'), 'eased'],
+  ['css steps(3) then ease at 50%', curve('linear', '0:steps(3) 0.5:ease 1:linear'), 'mixed'],
+  ['css steps(3) shorthand, ease-out at 50%', curve('linear', '0:steps(3) 0.5:ease-out 1:steps(3)'), 'mixed'],
+  ['css steps(3) shorthand, linear at 50%', curve('linear', '0:steps(3) 0.5:linear 1:steps(3)'), 'mixed'],
+  ['css ease only on the last keyframe', curve('linear', '0:steps(3) 1:ease'), 'stepped'],
+  ['css steps(2) shorthand under an eased first keyframe', curve('linear', '0:ease 1:steps(2)'), 'eased'],
+  ['transition step-end', curve('steps(1)', '0:linear 1:linear'), 'stepped'],
+  ['transition ease-out', curve('ease-out', '0:linear 1:linear'), 'eased'],
+  ['web animation, steps(3) on the effect', curve('steps(3)', '0:linear 1:linear'), 'stepped'],
+  ['web animation, steps(3) on the first keyframe', curve('linear', '0:steps(3) 1:linear'), 'stepped'],
+  ['web animation, linear', curve('linear', '0:linear 1:linear'), 'eased'],
+  ['web animation, one keyframe', curve('linear', '1:linear'), 'eased'],
+  ['web animation, steps(3) then ease at 50%', curve('linear', '0:steps(3) 0.5:ease 1:linear'), 'mixed'],
+  ['web animation, ease-in over stepped keyframes', curve('ease-in', '0:steps(3) 1:steps(2)'), 'stepped'],
+  ['web animation, one keyframe, steps(3) on the effect', curve('steps(3)', '1:linear'), 'stepped'],
+  ['web animation, one keyframe carrying steps(3) at offset 1', curve('linear', '1:steps(3)'), 'eased'],
+  ['web animation, one keyframe carrying steps(3) at offset 0', curve('linear', '0:steps(3)'), 'stepped'],
+  ['web animation, first keyframe at 50%', curve('linear', '0.5:steps(3) 1:linear'), 'mixed'],
+];
+
+test('isStepped: any stepped segment, which is what fails a space animation', () => {
+  for (const [label, record, truth] of CURVES) assert.equal(isStepped(record), truth !== 'eased', label);
+});
+
+test('isEased: any eased segment, which is what fails a signal animation', () => {
+  for (const [label, record, truth] of CURVES) assert.equal(isEased(record), truth !== 'stepped', label);
+});
+
+test('a mixed curve is both stepped and eased, so it fails in either family', () => {
+  const mixed = curve('linear', '0:steps(3) 0.5:ease 1:linear');
+  assert.deepEqual([isStepped(mixed), isEased(mixed)], [true, true]);
+});
+
+test('a record without the curve fields is a bug upstream, not a pass', () => {
+  const shape = /needs effectEasing and keyframes/;
+  assert.throws(() => isEased({ easings: ['steps(3)'] }), shape);
+  assert.throws(() => isStepped({ effectEasing: 'linear' }), shape);
+  assert.throws(() => isEased({ keyframes: [{ offset: 0, easing: 'steps(3)' }] }), shape);
 });
 ```
 
 `animatedProperties` compares kebab-case names because the probe kebab-cases keyframe keys (`computedOffset` becomes `computed-offset`); `BOOKKEEPING_KEYS` holds both spellings.
+
+the `CURVES` rows are what chromium 145 reported for real animations, each judged by pausing it and sampling its opacity 91 times across the duration (a stepped curve lands on a handful of values, an eased segment on dozens). a flat list of easings can't judge them: css copies the shorthand onto every keyframe including the last, whose easing covers no segment (`0:steps(3) 1:ease` is fully stepped), a css `steps(3)` with `ease-out` on its 50% keyframe is half eased, and a web animation can carry `steps()` on the effect over `linear` keyframes. so the probe keeps the effect easing and the per-keyframe easings apart and the predicates judge segment by segment.
 
 - [ ] **Step 3: run the tests to see them fail**
 
@@ -1513,13 +1563,41 @@ export function familyOf(record) {
   return 'unclassified';
 }
 
-export const isStepped = (easings) => easings.some((e) => e.startsWith('steps('));
+// chromium serializes step-end and step-start as steps(1) and steps(1, start), so the prefix is enough
+const isSteps = (easing) => easing.startsWith('steps(');
+
+// the curve a record draws, one easing per segment. a keyframe's easing runs to the next keyframe, so
+// the last one's covers nothing (css copies the shorthand onto it anyway, harmless), and a first
+// keyframe past 0 means an implicit linear one before it. read from chromium 145, spec 7.7 (¬_¬)
+function segmentsOf(record) {
+  const { effectEasing, keyframes } = record;
+  if (typeof effectEasing !== 'string' || Array.isArray(keyframes) === false) {
+    throw new TypeError('an animation record needs effectEasing and keyframes: [{ offset, easing }] (the probe shape, task 6)');
+  }
+  const segments = keyframes.filter((k) => k.offset < 1).map((k) => k.easing);
+  if (keyframes.length > 0 && keyframes[0].offset > 0) segments.unshift('linear');
+  return { effectEasing, segments };
+}
+
+// steps() quantizes whatever it wraps: a stepped effect easing makes every segment stepped, and a
+// stepped segment stays stepped under any effect easing. a curve with both kinds of segment is
+// stepped AND eased, so it fails in either family. the two checks are not each other's negation XX
+export function isStepped(record) {
+  const { effectEasing, segments } = segmentsOf(record);
+  return isSteps(effectEasing) || segments.some(isSteps);
+}
+
+export function isEased(record) {
+  const { effectEasing, segments } = segmentsOf(record);
+  if (isSteps(effectEasing)) return false;
+  return segments.length === 0 || segments.some((e) => isSteps(e) === false);
+}
 ```
 
 - [ ] **Step 5: run the tests to see them pass**
 
 Run: `node --test test/unit/feel-budgets.test.js`
-Expected: PASS, 12 tests, `ℹ fail 0`.
+Expected: PASS, 15 tests, `ℹ fail 0`.
 
 - [ ] **Step 6: gates, then commit**
 
@@ -1553,7 +1631,7 @@ spec 7.6 (windows), 7.7 (every check), 7.8 (the apparatus checks that live on th
 - Create: `test/unit/feel-evaluate.test.js`
 
 **Interfaces:**
-- Consumes: `summarizeTrace` output and `frameCosts`, `decodeComposite`, `COMPOSITE_IGNORED`, `stepWindows` (task 2). `isVsyncMiss`, `worstInteraction`, `isUnpromptedShift`, `animatedProperties`, `familyOf`, `isStepped` (task 3). `GsFeelUnevaluable` (task 2).
+- Consumes: `summarizeTrace` output and `frameCosts`, `decodeComposite`, `COMPOSITE_IGNORED`, `stepWindows` (task 2). `isVsyncMiss`, `worstInteraction`, `isUnpromptedShift`, `animatedProperties`, `familyOf`, `isStepped`, `isEased` (task 3). `GsFeelUnevaluable` (task 2).
 - Produces: the samples shape the probe must return (task 6 implements it exactly), the run shape, the report shape (task 5 formats it, task 6 attaches it):
 
 ```js
@@ -1572,8 +1650,9 @@ spec 7.6 (windows), 7.7 (every check), 7.8 (the apparatus checks that live on th
   shifts: [{ startTime: 263, value: 0.33, hadRecentInput: false, sources: [{ path: 'section#faces', allowedBy: null, previousRect: { x: 0, y: 76, width: 1100, height: 46 }, currentRect: { x: 0, y: 136, width: 1100, height: 274 } }] }],
   longtasks: [{ startTime: 1834, duration: 73 }],
   loafs: [{ startTime: 1833, duration: 86, scripts: [{ invoker: 'BUTTON#slow.onclick', sourceURL: 'http://127.0.0.1:4173/x.html', sourceFunctionName: 'slowclick', duration: 70 }] }],
-  // origin 'before arm': already running when the probe armed. checked for property and family, never an answer
-  animations: [{ at: 1841, step: 0, kind: 'web-animation', name: '', id: 'gs-move:enter', target: 'gs-palette#p > div[part="box"]', pseudo: null, properties: ['transform', 'opacity'], easings: ['cubic-bezier(0.16, 1, 0.3, 1)'], iterations: 1, glitch: '1', origin: 'armed' }],
+  // origin 'before arm': already running when the probe armed. checked for property and family, never an answer.
+  // easings is the display list; effectEasing and keyframes are the curve the family check reads (task 3)
+  animations: [{ at: 1841, step: 0, kind: 'web-animation', name: '', id: 'gs-move:enter', target: 'gs-palette#p > div[part="box"]', pseudo: null, properties: ['transform', 'opacity'], easings: ['cubic-bezier(0.16, 1, 0.3, 1)'], effectEasing: 'cubic-bezier(0.16, 1, 0.3, 1)', keyframes: [{ offset: 0, easing: 'linear' }, { offset: 1, easing: 'linear' }], iterations: 1, glitch: '1', origin: 'armed' }],
   overlaps: [{ at: 1850, step: 0, target: 'div#c', pseudo: null, anims: [{ kind: 'web-animation', name: '', id: 'gs-move:slide' }, { kind: 'css-animation', name: 'sn-event-glitch', id: '' }] }],
   calm: [{ at: 1900, what: 'gs-decode played', target: 'gs-decode#wordmark' }],
 }
@@ -1655,7 +1734,11 @@ function build({ index = 1, steps = [{}], shifts = [], animations = [], overlaps
 const meta = (extra = {}) => ({ scenario: 'unit', matrix: 'm', mode: 'motion', env: {}, runsPlanned: 3, allowShift: [], ...extra });
 const fold = (runs, { mode = 'motion', ...extra } = {}) => combineRuns(B, runs.map((r) => evaluateRun(B, r, { mode })), meta({ mode, ...extra }));
 const checks = (report) => report.violations.map((v) => v.check).sort();
-const anim = (o) => ({ at: 1100, step: 0, kind: 'css-animation', name: 'gs-event-x', id: '', target: 'div#a', pseudo: null, properties: ['transform'], easings: ['steps(3)'], iterations: 1, glitch: '1', origin: 'armed', ...o });
+// the probe's curve fields: css copies the shorthand onto every keyframe, a transition or a web
+// animation carries its easing on the effect (both shapes read from chromium 145 in task 3)
+const cssCurve = (easing) => ({ easings: easing === 'linear' ? [] : [easing], effectEasing: 'linear', keyframes: [{ offset: 0, easing }, { offset: 1, easing }] });
+const effectCurve = (easing) => ({ easings: easing === 'linear' ? [] : [easing], effectEasing: easing, keyframes: [{ offset: 0, easing: 'linear' }, { offset: 1, easing: 'linear' }] });
+const anim = (o) => ({ at: 1100, step: 0, kind: 'css-animation', name: 'gs-event-x', id: '', target: 'div#a', pseudo: null, properties: ['transform'], ...cssCurve('steps(3)'), iterations: 1, glitch: '1', origin: 'armed', ...o });
 const shift = (o) => ({ startTime: 1100, value: 0.01, hadRecentInput: false, sources: [{ path: 'div#list', allowedBy: null, previousRect: { x: 0, y: 0 }, currentRect: { x: 0, y: 28 } }], ...o });
 
 test('a clean run passes and says so', () => {
@@ -1759,7 +1842,7 @@ test('property: only transform and opacity may animate, one violation per target
   const report = fold([build({ animations: [anim({ properties: ['left'] }), anim({ properties: ['transform', 'opacity'] })] })], { runsPlanned: 1 });
   assert.deepEqual(checks(report), ['property']);
   assert.deepEqual(report.violations[0].data.properties, ['left']);
-  const border = ['top', 'right', 'bottom', 'left'].map((side) => anim({ kind: 'css-transition', name: `border-${side}-color`, target: 'button#go', properties: [`border-${side}-color`], easings: ['ease-out'] }));
+  const border = ['top', 'right', 'bottom', 'left'].map((side) => anim({ kind: 'css-transition', name: `border-${side}-color`, target: 'button#go', properties: [`border-${side}-color`], ...effectCurve('ease-out') }));
   const grouped = fold([build({ animations: border })], { runsPlanned: 1 });
   assert.equal(grouped.violations.length, 1);
   assert.deepEqual(grouped.violations[0].data.properties, ['border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color']);
@@ -1767,13 +1850,21 @@ test('property: only transform and opacity may animate, one violation per target
 
 test('family: event eased, spatial stepped and unclassified each fail', () => {
   const report = fold([build({ animations: [
-    anim({ name: 'sn-event-eased', easings: ['ease-out'] }),
-    anim({ name: 'sn-spatial-stepped', easings: ['steps(4)'] }),
+    anim({ name: 'sn-event-eased', ...cssCurve('ease-out') }),
+    anim({ name: 'sn-spatial-stepped', ...cssCurve('steps(4)') }),
     anim({ kind: 'web-animation', name: '', id: '' }),
-    anim({ name: 'gs-event-glitch-shift', easings: ['steps(3)'] }),
-    anim({ kind: 'web-animation', name: '', id: 'gs-move:enter', easings: ['cubic-bezier(0.16, 1, 0.3, 1)'] }),
+    anim({ name: 'gs-event-glitch-shift', ...cssCurve('steps(3)') }),
+    anim({ kind: 'web-animation', name: '', id: 'gs-move:enter', ...effectCurve('cubic-bezier(0.16, 1, 0.3, 1)') }),
   ] })], { runsPlanned: 1 });
   assert.deepEqual(report.violations.map((v) => v.data.rule).sort(), ['event eased', 'spatial stepped', 'unclassified']);
+});
+
+test('family: a signal eased over part of its curve fails, one whose ease sits on the last keyframe does not', () => {
+  const mixed = anim({ name: 'sn-event-mixed', easings: ['steps(3)', 'ease'], keyframes: [{ offset: 0, easing: 'steps(3)' }, { offset: 0.5, easing: 'ease' }, { offset: 1, easing: 'linear' }] });
+  const tail = anim({ name: 'sn-event-tail', easings: ['steps(3)', 'ease'], keyframes: [{ offset: 0, easing: 'steps(3)' }, { offset: 1, easing: 'ease' }] });
+  const poke = anim({ kind: 'web-animation', name: '', id: 'sn-event-poke', ...effectCurve('steps(3)') });
+  const report = fold([build({ animations: [mixed, tail, poke] })], { runsPlanned: 1 });
+  assert.deepEqual(report.violations.map((v) => [v.data.rule, v.data.name]), [['event eased', 'sn-event-mixed']]);
 });
 
 test('calm fails signal at glitch 0, motion mode does not; still fails any animation', () => {
@@ -1782,7 +1873,7 @@ test('calm fails signal at glitch 0, motion mode does not; still fails any anima
   assert.equal(fold([build({ animations: [zero] })], { runsPlanned: 1 }).result, 'pass');
   const dom = fold([build({ calm: [{ at: 1100, what: 'gs-decode played', target: 'gs-decode#wordmark' }] })], { runsPlanned: 1, mode: 'calm' });
   assert.deepEqual(dom.violations.map((v) => [v.data.rule, v.data.name]), [['signal at glitch 0', 'gs-decode played']]);
-  const moved = anim({ kind: 'web-animation', name: '', id: 'gs-move:enter', easings: [] });
+  const moved = anim({ kind: 'web-animation', name: '', id: 'gs-move:enter', ...effectCurve('linear') });
   assert.deepEqual(fold([build({ animations: [moved] })], { runsPlanned: 1, mode: 'still' }).violations.map((v) => v.data.rule), ['motion under still']);
 });
 
@@ -1841,7 +1932,7 @@ Expected: FAIL, `Cannot find module '/Volumes/T7/ghost-signal/src/feel/evaluate.
 // report. pure: the unit tests hand it built runs and the fixture hands it real ones. the median
 // lives here and nowhere else (spec 8.5) (¬‿¬)
 import { GsFeelUnevaluable } from './errors.js';
-import { isVsyncMiss, worstInteraction, isUnpromptedShift, animatedProperties, familyOf, isStepped } from './budgets.js';
+import { isVsyncMiss, worstInteraction, isUnpromptedShift, animatedProperties, familyOf, isStepped, isEased } from './budgets.js';
 import { frameCosts, decodeComposite, COMPOSITE_IGNORED } from './trace.js';
 
 export const REPORT_VERSION = 1;
@@ -2004,11 +2095,11 @@ function judgeAnimations(budgets, samples, mode, out) {
       for (const p of bad) if (v.data.properties.includes(p) === false) v.data.properties.push(p);
       props.set(key, v);
     }
+    // a curve with a stepped and an eased segment is both, so each family asks its own question
     const fam = familyOf(a);
-    const stepped = isStepped(a.easings);
     if (fam === 'unclassified') family(a, 'unclassified');
-    else if (fam === 'signal' && stepped === false) family(a, 'event eased');
-    else if (fam === 'space' && stepped === true) family(a, 'spatial stepped');
+    else if (fam === 'signal' && isEased(a)) family(a, 'event eased');
+    else if (fam === 'space' && isStepped(a)) family(a, 'spatial stepped');
     if (mode === 'calm' && fam === 'signal' && a.glitch === '0') family(a, 'signal at glitch 0');
     if (mode === 'still') family(a, 'motion under still');
   }
@@ -2686,14 +2777,19 @@ export function installProbe() {
     if (state.props.has(a)) return state.props.get(a);
     const keys = new Set();
     const easings = new Set();
+    const keyframes = [];
     for (const f of a.effect?.getKeyframes?.() ?? []) {
       for (const k of Object.keys(f)) if (BOOK.has(k) === false) keys.add(kebab(k));
       if (typeof f.easing === 'string' && f.easing !== 'linear') easings.add(f.easing);
+      keyframes.push({ offset: f.computedOffset, easing: typeof f.easing === 'string' ? f.easing : 'linear' });
     }
     if (typeof CSSTransition !== 'undefined' && a instanceof CSSTransition) keys.add(a.transitionProperty);
     const timing = a.effect?.getTiming?.() ?? {};
     if (typeof timing.easing === 'string' && timing.easing !== 'linear') easings.add(timing.easing);
-    const out = { properties: [...keys], easings: [...easings], iterations: timing.iterations ?? 1 };
+    // easings is for reading. the family check needs the curve itself, in order with linear kept:
+    // which keyframe carries the steps() decides whether a signal eases (task 3)
+    const effectEasing = typeof timing.easing === 'string' ? timing.easing : 'linear';
+    const out = { properties: [...keys], easings: [...easings], effectEasing, keyframes, iterations: timing.iterations ?? 1 };
     state.props.set(a, out);
     return out;
   };
@@ -2713,7 +2809,7 @@ export function installProbe() {
     state.animations.push({
       at: now(), step: state.step === null ? null : state.step.index, ...describe(a),
       target: cssPath(target), pseudo: a.effect?.pseudoElement ?? null,
-      properties: p.properties, easings: p.easings, iterations: p.iterations,
+      properties: p.properties, easings: p.easings, effectEasing: p.effectEasing, keyframes: p.keyframes, iterations: p.iterations,
       glitch: document.documentElement?.dataset.glitch ?? null, origin,
     });
     if (answers === false || ambientTarget(elementOf(target))) return;
@@ -2737,7 +2833,8 @@ export function installProbe() {
     const easing = getComputedStyle(e.target, pseudo).transitionTimingFunction;
     state.animations.push({
       at: now(), step: state.step === null ? null : state.step.index, kind: 'css-transition', name: e.propertyName, id: '',
-      target: cssPath(e.target), pseudo, properties: [e.propertyName], easings: easing === 'linear' ? [] : [easing], iterations: 1,
+      target: cssPath(e.target), pseudo, properties: [e.propertyName], easings: easing === 'linear' ? [] : [easing],
+      effectEasing: easing, keyframes: [{ offset: 0, easing: 'linear' }, { offset: 1, easing: 'linear' }], iterations: 1, // a real transition's shape
       glitch: document.documentElement?.dataset.glitch ?? null, origin: 'armed',
     });
     answered('animation');
@@ -3265,7 +3362,7 @@ import * as errors from '../../src/feel/errors.js';
 test('index.js re-exports every pure name, unambiguous', () => {
   for (const name of [
     'GsFeelConfigError', 'GsFeelUnevaluable', 'GsFeelError',
-    'parseDuration', 'loadBudgets', 'mergeBudgets', 'isVsyncMiss', 'worstInteraction', 'isUnpromptedShift', 'animatedProperties', 'familyOf', 'isStepped', 'BOOKKEEPING_KEYS',
+    'parseDuration', 'loadBudgets', 'mergeBudgets', 'isVsyncMiss', 'worstInteraction', 'isUnpromptedShift', 'animatedProperties', 'familyOf', 'isStepped', 'isEased', 'BOOKKEEPING_KEYS',
     'TRACE_CATEGORIES', 'COMPOSITE_IGNORED', 'rendererPid', 'compositeResults', 'decodeComposite', 'summarizeTrace', 'frameCosts',
     'REPORT_VERSION', 'TIMING_CHECKS', 'DROPS_GATE', 'evaluateRun', 'needsThirdRun', 'combineRuns',
     'formatReport',
@@ -3751,7 +3848,9 @@ every page shares the same head, differing only in title and body. each one plan
     .eased { animation: sn-event-eased 200ms ease-out 1; }
     .stepped { animation: sn-spatial-stepped 200ms steps(4) 1; }
     .glitch { animation: sn-event-glitch 180ms steps(3) 1; }
+    .mixed { animation: sn-event-mixed 200ms steps(3) 1; }
     @keyframes sn-event-eased { from { transform: translateX(0); } to { transform: translateX(8px); } }
+    @keyframes sn-event-mixed { 0% { transform: translateX(0); } 50% { transform: translateX(4px); animation-timing-function: ease-out; } 100% { transform: translateX(8px); } }
     @keyframes sn-spatial-stepped { from { transform: translateX(0); } to { transform: translateX(40px); } }
     @keyframes sn-event-glitch { 0% { transform: translateX(-2px); } 50% { transform: translateX(2px); } 100% { transform: translateX(0); } }
   </style>
@@ -3762,9 +3861,11 @@ every page shares the same head, differing only in title and body. each one plan
   <div class="box" id="b"></div>
   <div class="box" id="c"></div>
   <div class="box" id="d"></div>
+  <div class="box" id="e"></div>
   <script>
     // planted: an eased event, a stepped spatial move, a glitch on an element mid slide (two
-    // transform animations on one carrier), and a signal that runs at glitch 0
+    // transform animations on one carrier), a signal that runs at glitch 0, and a stepped event
+    // that eases from its 50% keyframe on (the half an any-steps() check would wave through)
     const play = (el, cls) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
     window.eased = () => play(document.getElementById('a'), 'eased');
     window.stepped = () => play(document.getElementById('b'), 'stepped');
@@ -3774,6 +3875,7 @@ every page shares the same head, differing only in title and body. each one plan
       setTimeout(() => play(c, 'glitch'), 100);
     };
     window.glitchAtZero = () => play(document.getElementById('d'), 'glitch');
+    window.mixed = () => play(document.getElementById('e'), 'mixed');
   </script>
 </body>
 </html>
@@ -3953,11 +4055,16 @@ test('bad-family: eased event, stepped space and a shared carrier each fail', as
       await s.event('eased event', () => page.evaluate(() => window.eased()));
       await s.event('stepped space', () => page.evaluate(() => window.stepped()));
       await s.event('glitch mid slide', () => page.evaluate(() => window.glitchMidSlide()));
+      await s.event('half eased event', () => page.evaluate(() => window.mixed()));
     },
   }));
   const rules = err.report.violations.filter((v) => v.check === 'family').map((v) => v.data.rule);
   expect(rules).toEqual(expect.arrayContaining(['event eased', 'spatial stepped', 'one carrier']));
   expect(err.message).toContain('sn-event-eased');
+  // the stepped glitch is the negative's own control: the eased check has to tell the two apart
+  const eased = err.report.violations.filter((v) => v.data.rule === 'event eased').map((v) => v.data.name);
+  expect(eased).toContain('sn-event-mixed');
+  expect(eased).not.toContain('sn-event-glitch');
 });
 
 test('bad-family in calm mode: a signal at glitch 0 fails', async ({ page, feel }) => {

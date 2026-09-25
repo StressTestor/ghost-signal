@@ -91,4 +91,32 @@ export function familyOf(record) {
   return 'unclassified';
 }
 
-export const isStepped = (easings) => easings.some((e) => e.startsWith('steps('));
+// chromium serializes step-end and step-start as steps(1) and steps(1, start), so the prefix is enough
+const isSteps = (easing) => easing.startsWith('steps(');
+
+// the curve a record draws, one easing per segment. a keyframe's easing runs to the next keyframe, so
+// the last one's covers nothing (css copies the shorthand onto it anyway, harmless), and a first
+// keyframe past 0 means an implicit linear one before it. read from chromium 145, spec 7.7 (¬_¬)
+function segmentsOf(record) {
+  const { effectEasing, keyframes } = record;
+  if (typeof effectEasing !== 'string' || Array.isArray(keyframes) === false) {
+    throw new TypeError('an animation record needs effectEasing and keyframes: [{ offset, easing }] (the probe shape, task 6)');
+  }
+  const segments = keyframes.filter((k) => k.offset < 1).map((k) => k.easing);
+  if (keyframes.length > 0 && keyframes[0].offset > 0) segments.unshift('linear');
+  return { effectEasing, segments };
+}
+
+// steps() quantizes whatever it wraps: a stepped effect easing makes every segment stepped, and a
+// stepped segment stays stepped under any effect easing. a curve with both kinds of segment is
+// stepped AND eased, so it fails in either family. the two checks are not each other's negation XX
+export function isStepped(record) {
+  const { effectEasing, segments } = segmentsOf(record);
+  return isSteps(effectEasing) || segments.some(isSteps);
+}
+
+export function isEased(record) {
+  const { effectEasing, segments } = segmentsOf(record);
+  if (isSteps(effectEasing)) return false;
+  return segments.length === 0 || segments.some((e) => isSteps(e) === false);
+}
