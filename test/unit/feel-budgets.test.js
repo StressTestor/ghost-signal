@@ -18,6 +18,15 @@ test('a tokens file with no feel group is a config error', () => {
   assert.throws(() => loadBudgets(new URL('./fixtures/feel/no-feel-tokens.json', import.meta.url)), GsFeelConfigError);
 });
 
+test('a missing tokens file is a config error that points at the sync script', () => {
+  assert.throws(() => loadBudgets(new URL('file:///nonexistent/tokens.json')), (e) => {
+    assert.ok(e instanceof GsFeelConfigError, `wanted GsFeelConfigError, got ${e?.name}: ${e?.message}`);
+    assert.match(e.message, /file:\/\/\/nonexistent\/tokens\.json is missing/);
+    assert.match(e.message, /scripts\/sync-ghost-signal\.sh/);
+    return true;
+  });
+});
+
 test('parseDuration reads ms and s and rejects anything else', () => {
   assert.equal(parseDuration('16.7ms'), 16.7);
   assert.equal(parseDuration('1s'), 1000);

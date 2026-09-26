@@ -36,7 +36,7 @@ scripts/
   ghost-signal.js         cli: check | flavor check | flavor build | lint-motion
   serve.js                static server on 127.0.0.1:4173 serving the repo root
   fetch-doto.sh           pinned font fetch + woff2 conversion (run once)
-  sync-ghost-signal.sh    copies src/ gen/ schema/ into a no-bundler consumer
+  sync-ghost-signal.sh    copies src/ gen/ schema/ tokens.json into a no-bundler consumer
   feel-baseline.js        the clean control n times: the runner's frame cpu, stalls, drops, calibration
   record-feel-fixtures.js dev only: records the chromium traces the trace.js tests read
   showcase-clips.sh       showcase webm to mp4 clips and stills (ffmpeg)

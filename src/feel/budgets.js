@@ -18,8 +18,19 @@ export function parseDuration(v) {
   return Number(m[1]) * (m[2] === 's' ? 1000 : 1);
 }
 
+// tokens.json sits next to src/, outside it. a vendored copy synced before the script carried it
+// has no such file, and a bare node ENOENT names neither the harness nor the fix
+function readTokens(url) {
+  try {
+    return readFileSync(url, 'utf8');
+  } catch (e) {
+    if (e?.code !== 'ENOENT') throw e;
+    throw new GsFeelConfigError(`${url} is missing. a vendored copy needs tokens.json next to src/ (scripts/sync-ghost-signal.sh copies it)`);
+  }
+}
+
 export function loadBudgets(url = TOKENS_URL) {
-  const feel = JSON.parse(readFileSync(url, 'utf8')).feel;
+  const feel = JSON.parse(readTokens(url)).feel;
   if (feel === undefined) throw new GsFeelConfigError(`${url} has no feel group`);
   return Object.freeze({
     frame: parseDuration(feel.frame),
