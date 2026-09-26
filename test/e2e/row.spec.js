@@ -403,6 +403,48 @@ test.describe('drawer motion', () => {
     });
   }
 
+  // an app shell that makes body the scroller: html holds overflow, so body's doesn't propagate to
+  // the viewport, scrollingElement is html and stays at 0, and the clamp lands on body alone
+  test('a collapse at the bottom of a body that is the scroller is one cut too', async ({ page }) => {
+    const r = await page.evaluate(async () => {
+      const { frame, settle } = window.drawerClock;
+      const style = document.createElement('style');
+      style.textContent = 'html { height: 100%; overflow: hidden; } body { height: 100%; margin: 0; overflow-y: auto; }';
+      document.head.append(style);
+      const lines = Array.from({ length: 6 }, (_, i) => `line ${i + 1} of the detail`).join('\n');
+      for (let i = 12; i < 42; i++) {
+        const row = document.createElement('gs-row');
+        row.id = `r${i}`;
+        row.setAttribute('status', 'ok');
+        row.setAttribute('label', `row ${i}`);
+        row.append(lines);
+        document.body.append(row);
+      }
+      const body = document.body;
+      const row = document.getElementById('r39');
+      const t = (id) => document.getElementById(id).getBoundingClientRect().top;
+      row.toggle(true);
+      await settle();
+      body.scrollTop = body.scrollHeight;
+      await frame();
+      await frame();
+      const scrolled = body.scrollTop;
+      row.toggle(false);
+      await frame();
+      const first = { r38: t('r38'), r40: t('r40') };
+      await settle();
+      const settled = { r38: t('r38'), r40: t('r40') };
+      return { scrolled, clamped: scrolled - body.scrollTop, html: document.documentElement.scrollTop, first, settled, expanded: row.expanded };
+    });
+    // body scrolled and clamped while the document's scroller never moved, or this is the plain page
+    expect(r.scrolled).toBeGreaterThan(0);
+    expect(r.clamped).toBeGreaterThan(0);
+    expect(r.html).toBe(0);
+    expect(r.expanded).toBe(false);
+    expect(Math.abs(r.first.r38 - r.settled.r38)).toBeLessThan(1);
+    expect(Math.abs(r.first.r40 - r.settled.r40)).toBeLessThan(1);
+  });
+
   // the clamp can be in any scroller between the row and the page: a fixed-height one at its own
   // bottom clamps while the page above it has room to spare
   test('a collapse at the bottom of a nested scroller is one cut too', async ({ page }) => {

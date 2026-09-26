@@ -199,8 +199,10 @@ or `gallery/`.
   `data-leaving` clip, the `fill: 'forwards'` follower moves) until the drawer lets go, so it clamps
   twice. predicting the clamp from one box's room misses: a wrapper with `overflow-x: hidden` or
   `overflow: hidden` computes to a scroll container that never scrolls, and a fixed-height scroller
-  keeps its height so the page above it never clamps. fix: `toggle()` records `scrollTop` on the
-  document's scroller and every ancestor whose `overflow-y` isn't `visible` or `clip`, flips
+  keeps its height so the page above it never clamps. an app shell that holds `html` at
+  `overflow: hidden` makes `body` the scroller while `scrollingElement` stays `html` at 0. fix:
+  `toggle()` records `scrollTop` on the document's scroller and every ancestor, `body` included,
+  whose `overflow-y` isn't `visible` or `clip` (a propagated `body` reads 0 both times), flips
   `aria-expanded` with the clip at `display: none`, reads them again (the read forces the layout
   that clamps), and cuts if any of them moved back, the same single cut reduced motion makes.
   scroll anchoring moving `scrollTop` for a row shut above the anchor reads the same way and cuts
@@ -235,4 +237,4 @@ node scripts/feel-baseline.js --runs=20 --dpr=2
 node scripts/record-feel-fixtures.js
 ```
 
-last updated: 2026-09-26 (v0.2 in progress, plan task 22)
+last updated: 2026-09-26 (v0.2 in progress, final review fixes)

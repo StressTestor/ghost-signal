@@ -25,10 +25,13 @@ function visibleFollowers(row, extra = 0) {
 // the document's scroller and every ancestor that is a scroll container. overflow-y anything but
 // visible or clip makes one, even a wrapper that never scrolls (overflow-x: hidden computes it to
 // auto), so which of them clamps is measured after the flip, never predicted from one box's room:
-// a fixed-height scroller keeps its height when a row in it shuts, and the page above it never moves
+// a fixed-height scroller keeps its height when a row in it shuts, and the page above it never moves.
+// body counts like any ancestor: an app shell that holds html at overflow hidden makes body the
+// scroller while scrollingElement stays html at 0. when body's overflow propagates to the viewport
+// instead, body.scrollTop reads 0 before and after, so measuring it costs nothing
 function scrollers(row) {
   const out = [document.scrollingElement ?? document.documentElement];
-  for (let el = row.parentElement; el !== null && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+  for (let el = row.parentElement; el !== null && el !== document.documentElement; el = el.parentElement) {
     const y = getComputedStyle(el).overflowY;
     if (y !== 'visible' && y !== 'clip') out.push(el);
   }
