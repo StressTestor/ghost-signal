@@ -453,7 +453,7 @@ test.describe('drawer motion', () => {
   // bottom. predicting the clamp from the page's room would cut this; it has to slide
   test('a collapse inside a scroller with room still slides with the page at its bottom', async ({ page }) => {
     const r = await page.evaluate(async () => {
-      const { frame, settle } = window.drawerClock;
+      const { frame, settle, turn, shift } = window.drawerClock;
       const lines = Array.from({ length: 6 }, (_, i) => `line ${i + 1} of the detail`).join('\n');
       const spacer = document.createElement('div');
       spacer.style.height = '1500px';
@@ -483,10 +483,10 @@ test.describe('drawer motion', () => {
       const before = t('r21');
       row.toggle(false);
       const follower = document.getElementById('r21').getAnimations().map((a) => a.id);
-      await frame();
-      const first = t('r21');
+      await turn(shift / 2);
+      const midway = t('r21');
       await settle();
-      return { page, inner, h, before, first, settled: t('r21'), pageAfter: scrollY, innerAfter: box.scrollTop, follower };
+      return { page, inner, h, before, midway, settled: t('r21'), pageAfter: scrollY, innerAfter: box.scrollTop, follower };
     });
     // the page sits at its bottom and the scroller has more room than the drawer is tall
     expect(r.page.y).toBeGreaterThan(0);
@@ -496,8 +496,10 @@ test.describe('drawer motion', () => {
     expect(r.pageAfter).toBe(r.page.y);
     expect(r.innerAfter).toBe(r.inner.y);
     expect(r.follower).toEqual(['gs-move:drawer']);
-    // r21 climbs the drawer's height, and on the first frame it is still on its way
+    // r21 climbs the drawer's height, and halfway through the move on the drawer's clock it is still
+    // on its way
     expect(r.before - r.settled).toBeCloseTo(r.h, 0);
-    expect(r.first).toBeGreaterThan(r.settled + 1);
+    expect(r.midway).toBeGreaterThan(r.settled + 1);
+    expect(r.midway).toBeLessThan(r.before - 1);
   });
 });
