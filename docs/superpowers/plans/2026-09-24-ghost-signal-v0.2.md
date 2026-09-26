@@ -7635,7 +7635,7 @@ joe's ask on top of the spec, and spec 13 risk 8 (visual change without a failin
 
 **Interfaces:**
 - Consumes: `FEEL_PROFILES.m5` (task 6); the gallery ids and `window.gallery` methods from tasks 13 to 21 (`#motion-tabs [data-view]`, `#toast-burst`, `#motion-shuffle`, `#motion-bars-new`, `#motion-list`, `#row-list`, `#open-window`, `#window-no`, `[data-toast-pick]`, `[data-status-pick]`, `#wordmark`, `window.gallery.ambient`).
-- Produces: `npm run showcase` writes `gallery/showcase/raw/<family>-<motion>-glitch<n>.webm` (48 recordings: 9 space motions and 7 event motions at 3 glitch levels), then `gallery/showcase/clips/<same>.mp4` and one `gallery/showcase/stills/<name>.png` per glitch 1 recording (16 stills).
+- Produces: `npm run showcase` writes `gallery/showcase/raw/<family>-<motion>-glitch<n>.webm` (48 recordings: 9 space motions and 7 event motions at 3 glitch levels), then `gallery/showcase/clips/<same>.mp4` and one `gallery/showcase/stills/<name>.png` per glitch 1 recording (16 stills: the midpoint frame for a space motion, a 6x2 contact strip across the walk for an event motion).
 
 - [ ] **Step 1: add the project, the script and the ignore line**
 
@@ -7756,11 +7756,11 @@ const EVENT = {
   },
   'decode-reveal': async (page) => {
     await into(page, '#wordmark');
-    await page.evaluate(() => {
-      const w = document.getElementById('wordmark');
-      w.setAttribute('text', 'zero chill detected');
-      setTimeout(() => w.setAttribute('text', 'ghost signal'), 700);
-    });
+    // both reveals are awaited here: a page-side setTimeout outran the 900ms tail and the clip ended mid-scramble
+    await page.evaluate(() => document.getElementById('wordmark').setAttribute('text', 'zero chill detected'));
+    await pause(page, 700);
+    await page.evaluate(() => document.getElementById('wordmark').setAttribute('text', 'ghost signal'));
+    await pause(page, 600);
   },
   'ambient-micro-glitch': async (page) => {
     await into(page, '#wordmark');
@@ -7803,8 +7803,11 @@ for (const glitch of ['0', '1', '2']) {
 
 ```bash
 #!/usr/bin/env bash
-# turns the showcase webm recordings into mp4 clips, plus one still per glitch 1 clip at its
-# midpoint. playwright's webm carries no duration, so the midpoint is read from the mp4.
+# turns the showcase webm recordings into mp4 clips, plus one still per glitch 1 clip. a space
+# still is the midpoint frame. an event still is a 6x2 contact strip from 0.3s to 0.2s before the
+# end: the signal motions fire around 0.44s and are over well before the midpoint, so a single
+# midpoint frame only ever showed the aftermath (¬‿¬). playwright's webm carries no duration, so
+# every timestamp is read from the mp4.
 # the showcase is for joe's eye before the tag; nothing here is an assertion (spec 13, risk 8)
 set -euo pipefail
 
@@ -7830,8 +7833,21 @@ for f in "${files[@]}"; do
   case "$name" in
     *-glitch1)
       dur="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$CLIPS/$name.mp4")"
-      mid="$(awk -v d="$dur" 'BEGIN { printf "%.2f", d / 2 }')"
-      ffmpeg -y -loglevel error -ss "$mid" -i "$CLIPS/$name.mp4" -frames:v 1 "$STILLS/$name.png"
+      rm -f "$STILLS/$name.png"
+      case "$name" in
+        event-*)
+          # 12 cells spread over the whole walk, so face-status-glitch's four steps fit as well as a 640ms flare
+          end="$(awk -v d="$dur" 'BEGIN { printf "%.2f", d - 0.2 }')"
+          rate="$(awk -v d="$dur" 'BEGIN { printf "%.4f", 12 / (d - 0.5) }')"
+          ffmpeg -y -loglevel error -i "$CLIPS/$name.mp4" -vf "trim=start=0.3:end=$end,setpts=PTS-STARTPTS,fps=$rate,scale=735:-2,tile=6x2" -frames:v 1 "$STILLS/$name.png"
+          ;;
+        *)
+          mid="$(awk -v d="$dur" 'BEGIN { printf "%.2f", d / 2 }')"
+          ffmpeg -y -loglevel error -ss "$mid" -i "$CLIPS/$name.mp4" -frames:v 1 "$STILLS/$name.png"
+          ;;
+      esac
+      # ffmpeg can exit 0 with no frame written; a still that isn't there is a failure, not a count XX
+      [ -s "$STILLS/$name.png" ] || { printf 'showcase-clips: no still written for %s\n' "$name" >&2; exit 1; }
       stills=$((stills + 1))
       ;;
   esac
@@ -7844,7 +7860,7 @@ Run: `chmod +x scripts/showcase-clips.sh`
 - [ ] **Step 4: record it**
 
 Run: `npm run showcase`
-Expected: `48 passed`, then `showcase-clips: 48 clips in gallery/showcase/clips, 16 stills in gallery/showcase/stills`. check one: `ffprobe -v error -show_entries stream=width,height,codec_name -of csv=p=0 gallery/showcase/clips/space-palette-open-highlight-close-glitch1.mp4` prints `h264,1470,956`. open `gallery/showcase/stills/event-crash-toast-mosh-glitch1.png` and look at it: the rebuilt mosh is the one visual change joe still has to sign off (open question 6).
+Expected: `48 passed`, then `showcase-clips: 48 clips in gallery/showcase/clips, 16 stills in gallery/showcase/stills`. check one: `ffprobe -v error -show_entries stream=width,height,codec_name -of csv=p=0 gallery/showcase/clips/space-palette-open-highlight-close-glitch1.mp4` prints `h264,1470,956`. open `gallery/showcase/stills/event-crash-toast-mosh-glitch1.png` and look at it: event stills are a 6x2 contact strip across the walk (4410x956), so the mosh sits in the early cells while the toast lands; the rebuilt mosh is the one visual change joe still has to sign off (open question 6). space stills stay the single midpoint frame (1470x956).
 
 one more thing for joe's eye, written into the scratch notes for the hand-off: the drawer moves only the sibling rows (spec 6.6). whatever sits after the rows' container (in the gallery, the `#chrome` section below `#row-list`) jumps by the drawer's height in one frame, and on collapse the following rows are positioned, in transform stacking contexts, and paint over the next section for about 200ms. that matches the spec as written; the `space-row-drawer-*` clips are where to look, and a different call (clip the list, or move the section with the rows) is joe's.
 

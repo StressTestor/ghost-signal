@@ -78,11 +78,11 @@ const EVENT = {
   },
   'decode-reveal': async (page) => {
     await into(page, '#wordmark');
-    await page.evaluate(() => {
-      const w = document.getElementById('wordmark');
-      w.setAttribute('text', 'zero chill detected');
-      setTimeout(() => w.setAttribute('text', 'ghost signal'), 700);
-    });
+    // both reveals are awaited here: a page-side setTimeout outran the 900ms tail and the clip ended mid-scramble
+    await page.evaluate(() => document.getElementById('wordmark').setAttribute('text', 'zero chill detected'));
+    await pause(page, 700);
+    await page.evaluate(() => document.getElementById('wordmark').setAttribute('text', 'ghost signal'));
+    await pause(page, 600);
   },
   'ambient-micro-glitch': async (page) => {
     await into(page, '#wordmark');

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# turns the showcase webm recordings into mp4 clips, plus one still per glitch 1 clip at its
-# midpoint. playwright's webm carries no duration, so the midpoint is read from the mp4.
+# turns the showcase webm recordings into mp4 clips, plus one still per glitch 1 clip. a space
+# still is the midpoint frame. an event still is a 6x2 contact strip from 0.3s to 0.2s before the
+# end: the signal motions fire around 0.44s and are over well before the midpoint, so a single
+# midpoint frame only ever showed the aftermath (¬‿¬). playwright's webm carries no duration, so
+# every timestamp is read from the mp4.
 # the showcase is for joe's eye before the tag; nothing here is an assertion (spec 13, risk 8)
 set -euo pipefail
 
@@ -26,8 +29,21 @@ for f in "${files[@]}"; do
   case "$name" in
     *-glitch1)
       dur="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$CLIPS/$name.mp4")"
-      mid="$(awk -v d="$dur" 'BEGIN { printf "%.2f", d / 2 }')"
-      ffmpeg -y -loglevel error -ss "$mid" -i "$CLIPS/$name.mp4" -frames:v 1 "$STILLS/$name.png"
+      rm -f "$STILLS/$name.png"
+      case "$name" in
+        event-*)
+          # 12 cells spread over the whole walk, so face-status-glitch's four steps fit as well as a 640ms flare
+          end="$(awk -v d="$dur" 'BEGIN { printf "%.2f", d - 0.2 }')"
+          rate="$(awk -v d="$dur" 'BEGIN { printf "%.4f", 12 / (d - 0.5) }')"
+          ffmpeg -y -loglevel error -i "$CLIPS/$name.mp4" -vf "trim=start=0.3:end=$end,setpts=PTS-STARTPTS,fps=$rate,scale=735:-2,tile=6x2" -frames:v 1 "$STILLS/$name.png"
+          ;;
+        *)
+          mid="$(awk -v d="$dur" 'BEGIN { printf "%.2f", d / 2 }')"
+          ffmpeg -y -loglevel error -ss "$mid" -i "$CLIPS/$name.mp4" -frames:v 1 "$STILLS/$name.png"
+          ;;
+      esac
+      # ffmpeg can exit 0 with no frame written; a still that isn't there is a failure, not a count XX
+      [ -s "$STILLS/$name.png" ] || { printf 'showcase-clips: no still written for %s\n' "$name" >&2; exit 1; }
       stills=$((stills + 1))
       ;;
   esac
