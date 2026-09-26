@@ -39,6 +39,7 @@ scripts/
   sync-ghost-signal.sh    copies src/ gen/ schema/ into a no-bundler consumer
   feel-baseline.js        the clean control n times: the runner's frame cpu, stalls, drops, calibration
   record-feel-fixtures.js dev only: records the chromium traces the trace.js tests read
+  showcase-clips.sh       showcase webm to mp4 clips and stills (ffmpeg)
   lib/                    tokens.js contrast.js icons.js schema.js cli.js motion-lint.js
 schema/                   app.v1.json flavor.v1.json
 src/
@@ -49,10 +50,11 @@ src/
   components/             mosaic face decode tape window toast row container empty error splash wallpaper palette (13 modules)
   feel/                   probe.js (in-page recorder) playwright.js (the fixture) trace.js budgets.js evaluate.js format.js errors.js index.js
 gen/                      GhostSignal.swift ghost_signal.rs tokens.md
-gallery/                  index.html gallery.js apps/probe/ screenshots/ (gitignored)
+gallery/                  index.html gallery.js apps/probe/ screenshots/ (gitignored) showcase/ (gitignored)
 test/unit                 node:test
 test/e2e                  playwright specs, pages/, fixtures/, __snapshots__/
 test/feel                 playwright feel project: harness.spec.js (controls), pages/
+test/showcase             the video walk (npm run showcase), not a test suite
 ```
 
 ## key patterns
@@ -224,6 +226,7 @@ npm run check
 npm run e2e   # the chromium project only
 npm run feel
 GS_FEEL_RUNS=1 npm run feel
+npm run showcase   # video of every motion at glitch 0, 1, 2 into gallery/showcase/
 npm run serve
 node scripts/ghost-signal.js check gallery/apps/probe/app.json
 node scripts/ghost-signal.js lint-motion 'src/*.css'
@@ -232,4 +235,4 @@ node scripts/feel-baseline.js --runs=20 --dpr=2
 node scripts/record-feel-fixtures.js
 ```
 
-last updated: 2026-09-26 (v0.2 in progress, plan task 20)
+last updated: 2026-09-26 (v0.2 in progress, plan task 22)
