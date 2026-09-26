@@ -135,6 +135,72 @@ test.describe('reduced motion', () => {
   });
 });
 
+// the layout-shift observer can come back empty for a reason that has nothing to do with the
+// drawer (a toggle in the first paint's frame records nothing, even for a hard cut), so it proves
+// it can see a shift first: a control spacer that must record one, then a clean slate
+async function startShiftProbe() {
+  const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const probe = { shifts: [], obs: null };
+  const drain = () => { for (const e of probe.obs.takeRecords()) probe.shifts.push(e.value); };
+  probe.obs = new PerformanceObserver((l) => { for (const e of l.getEntries()) probe.shifts.push(e.value); });
+  probe.obs.observe({ type: 'layout-shift', buffered: true });
+  const block = document.createElement('div');
+  block.style.cssText = 'width: 200px; height: 40px; background: #888;';
+  document.body.prepend(block);
+  await frame();
+  const spacer = document.createElement('div');
+  spacer.style.height = '100px';
+  block.before(spacer);
+  await frame();
+  drain();
+  const control = probe.shifts.slice();
+  spacer.remove();
+  block.remove();
+  await frame();
+  drain();
+  probe.shifts.length = 0;
+  window.shiftProbe = probe;
+  return { supported: PerformanceObserver.supportedEntryTypes.includes('layout-shift'), control };
+}
+
+// entries still queued when the scenario ends are read too, then the observer goes away
+async function readShiftProbe() {
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const probe = window.shiftProbe;
+  for (const e of probe.obs.takeRecords()) probe.shifts.push(e.value);
+  probe.obs.disconnect();
+  return probe.shifts;
+}
+
+// r1 opened on a list that runs well past the fold, then shut `turn` ms later: settled or mid open.
+// read in the task that shuts it, a row with no drawer move sits where the collapse leaves it, so
+// one on screen with no move is a row that cut into view over the followers still sliding up
+async function collapsePastTheFold(page, turn) {
+  return page.evaluate(async (wait) => {
+    const lines = Array.from({ length: 6 }, (_, i) => `line ${i + 1} of the detail`).join('\n');
+    for (let i = 12; i < 42; i++) {
+      const row = document.createElement('gs-row');
+      row.id = `r${i}`;
+      row.setAttribute('status', 'ok');
+      row.setAttribute('label', `row ${i}`);
+      row.setAttribute('command', 'cargo test --workspace');
+      row.append(lines);
+      document.body.append(row);
+    }
+    const row = document.getElementById('r1');
+    const rows = [...document.querySelectorAll('gs-row')].slice(2);
+    const top = (el) => el.getBoundingClientRect().top;
+    row.toggle(true);
+    await new Promise((res) => setTimeout(res, wait));
+    const below = rows.filter((el) => top(el) >= innerHeight);
+    row.toggle(false);
+    const moves = (el) => el.getAnimations().some((a) => a.id === 'gs-move:drawer');
+    const cutIn = rows.filter((el) => top(el) < innerHeight && moves(el) === false).map((el) => el.id);
+    await new Promise((res) => setTimeout(res, 400));
+    return { cutIn, pulledUp: below.filter((el) => top(el) < innerHeight).map((el) => el.id), expanded: row.expanded };
+  }, turn);
+}
+
 test.describe('drawer motion', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/test/e2e/pages/drawer.html');
@@ -142,19 +208,21 @@ test.describe('drawer motion', () => {
   });
 
   test('a drawer opened with no input records no layout shift: the rows below move by transform', async ({ page }) => {
+    const live = await page.evaluate(startShiftProbe);
+    expect(live.supported).toBe(true);
+    expect(live.control.length).toBeGreaterThan(0);
     const r = await page.evaluate(async () => {
-      const t0 = performance.now();
-      const shifts = [];
-      new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.startTime > t0) shifts.push(e.value); }).observe({ type: 'layout-shift', buffered: true });
+      // past the first paint, or a cut in the same frame records no shift either
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
       const row = document.getElementById('r1');
       row.toggle(true);
       const follower = document.getElementById('r2').getAnimations().map((a) => a.id);
       await new Promise((res) => setTimeout(res, 400));
-      return { shifts, follower, expanded: row.expanded };
+      return { follower, expanded: row.expanded };
     });
     expect(r.follower).toEqual(['gs-move:drawer']);
     expect(r.expanded).toBe(true);
-    expect(r.shifts).toEqual([]);
+    expect(await page.evaluate(readShiftProbe)).toEqual([]);
   });
 
   test('toggling 60ms into an opening reverses from where the rows are, with no jump', async ({ page }) => {
@@ -174,16 +242,30 @@ test.describe('drawer motion', () => {
         requestAnimationFrame(f);
       });
       const fresh = await series(350, () => row.toggle(true));
+      const h = row.querySelector('[part="clip"]').offsetHeight;
       await series(350, () => row.toggle(false));
       const base = top();
+      let jump = null;
       const turned = await series(450, () => {
         row.toggle(true);
-        setTimeout(() => row.toggle(false), 60);
+        // read in the task that turns it: the reverse starts where r2 is, whatever frame it lands on
+        setTimeout(() => {
+          const before = top();
+          row.toggle(false);
+          jump = Math.abs(top() - before);
+        }, 60);
       });
-      return { fresh, turned, base };
+      return { fresh, turned, base, h, jump };
     });
     const steps = (xs) => xs.slice(1).map((v, i) => Math.abs(v - xs[i]));
-    expect(Math.max(...steps(r.turned))).toBeLessThanOrEqual(Math.max(...steps(r.fresh)) + 2);
+    // an empty series has a max of -Infinity and passes anything
+    expect(r.fresh.length).toBeGreaterThan(5);
+    expect(r.turned.length).toBeGreaterThan(5);
+    expect(Math.max(...steps(r.fresh))).toBeGreaterThan(0);
+    expect(r.h).toBeGreaterThan(0);
+    expect(r.jump).toBeLessThan(1);
+    // a cut is one step the size of the drawer; a smooth reverse stays near its steepest frame, about 0.4 of it
+    expect(Math.max(...steps(r.turned))).toBeLessThan(0.6 * r.h);
     expect(r.turned.at(-1)).toBeCloseTo(r.base, 0);
   });
 
@@ -199,5 +281,20 @@ test.describe('drawer motion', () => {
     expect(during).toEqual({ leaving: true, position: 'absolute', expanded: false });
     await expect(page.locator('#r1 [part="detail"]')).toBeHidden();
     expect(await page.locator('#r1 [part="clip"]').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(false);
+  });
+
+  test('a collapse slides the rows it pulls up from below the fold instead of cutting them in', async ({ page }) => {
+    const r = await collapsePastTheFold(page, 400);
+    // the scenario has to reach past the fold, or an empty cut list passes on nothing
+    expect(r.pulledUp.length).toBeGreaterThan(0);
+    expect(r.cutIn).toEqual([]);
+    expect(r.expanded).toBe(false);
+  });
+
+  test('a reverse 120ms into an opening slides the rows it pulls up from below the fold too', async ({ page }) => {
+    const r = await collapsePastTheFold(page, 120);
+    expect(r.pulledUp.length).toBeGreaterThan(0);
+    expect(r.cutIn).toEqual([]);
+    expect(r.expanded).toBe(false);
   });
 });

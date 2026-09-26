@@ -7,10 +7,13 @@ import './decode.js';
 const Base = globalThis.HTMLElement ?? class {};
 const LOOSE_SIGIL = '◌';
 
-// the rows after this one that are on screen now. rows below the fold move as a cut: nobody sees them
-function visibleFollowers(row) {
+// the rows after this one that are on screen now, plus the ones `extra` px under the fold. a collapse
+// pulls the rows just under the fold up into view, so it widens the window by the drawer's height:
+// cut instead of slid, they'd land on top of the followers still sliding up >:[ opening only pushes
+// rows down, so past the fold there it's a cut nobody sees
+function visibleFollowers(row, extra = 0) {
   const out = [];
-  const bottom = window.innerHeight;
+  const bottom = window.innerHeight + extra;
   for (let el = row.nextElementSibling; el !== null; el = el.nextElementSibling) {
     const r = el.getBoundingClientRect();
     if (r.top > bottom) break;
@@ -102,8 +105,9 @@ export class GsRow extends Base {
   toggle(force) {
     const open = force ?? this.expanded === false;
     const moving = open !== this.expanded && motionAllowed();
-    // measured before the layout flips: the rows below start where they are on screen
-    const followers = moving ? visibleFollowers(this) : [];
+    // measured before the layout flips: the rows below start where they are on screen. closing, the
+    // clip is still in flow here, so its offsetHeight is the height the rows below are about to climb
+    const followers = moving ? visibleFollowers(this, open ? 0 : this.#clip.offsetHeight) : [];
     this.#head.setAttribute('aria-expanded', String(open));
     this.dispatchEvent(new CustomEvent('gs-row-toggle', { bubbles: true, detail: { open } }));
     if (moving) this.#move(open, followers);
