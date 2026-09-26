@@ -191,6 +191,16 @@ or `gallery/`.
   brace, and a count that doesn't come out even would mean part of the sheet went unread. the usual
   culprit is a brace inside an unquoted `url(...)`. fix: quote the url (`url("a}b.png")`) or
   close the rule the message names, then run it again.
+- problem: collapsing a `gs-row` near the bottom of a scroll drags the rows above it down, then
+  cuts them back, and the rows below slide the wrong way. cause: the scroller clamps `scrollTop`
+  when the document shrinks, and a sliding collapse keeps the overflow up (the out of flow
+  `data-leaving` clip, the `fill: 'forwards'` follower moves) until the drawer lets go, so it clamps
+  twice. fix: `toggle()` reads the nearest scroller's room first and cuts any collapse the scroller
+  would clamp, the same single cut reduced motion makes.
+- problem: a drawer e2e test goes red locally under load but passes on ci. cause: a wall clock
+  wait (`setTimeout`, `waitForTimeout`) in a starved renderer can land before a move has started
+  or after it has finished. fix: drive the scenario off the moves' own clock (`currentTime`, a rAF
+  poll until no `gs-move:drawer` is left), as `installDrawerClock` in `row.spec.js` does.
 - problem: `gs-decode` renders empty text. cause: its text only comes from the `text` attribute;
   child text content is read once on first connect and never again. fix: set the `text` attribute,
   not element children.
@@ -216,4 +226,4 @@ node scripts/feel-baseline.js --runs=20 --dpr=2
 node scripts/record-feel-fixtures.js
 ```
 
-last updated: 2026-09-25 (v0.2 in progress, plan task 15)
+last updated: 2026-09-26 (v0.2 in progress, plan task 20)

@@ -172,11 +172,42 @@ async function readShiftProbe() {
   return probe.shifts;
 }
 
-// r1 opened on a list that runs well past the fold, then shut `turn` ms later: settled or mid open.
-// read in the task that shuts it, a row with no drawer move sits where the collapse leaves it, so
-// one on screen with no move is a row that cut into view over the followers still sliding up
+// the drawer's own clock. a starved renderer draws late, so a wall clock wait can land before a
+// move has even started or after it is gone; the moves only advance when frames do. `settle` waits
+// frames until no drawer move is left, `turn` seeks every drawer move to `ms` into its run once a
+// frame has drawn it, and `ease` is chromium's own reading of --gs-ease-move at a fraction of the trip
+function installDrawerClock() {
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  const moves = () => document.getAnimations().filter((a) => a.id === 'gs-move:drawer');
+  const root = getComputedStyle(document.documentElement);
+  const curve = new Animation(new KeyframeEffect(null, null, { duration: 1000, easing: root.getPropertyValue('--gs-ease-move').trim(), fill: 'both' }), null);
+  window.drawerClock = {
+    frame,
+    moves,
+    shift: parseFloat(root.getPropertyValue('--gs-motion-shift')),
+    async settle() {
+      while (moves().length > 0) await frame();
+      await frame();
+    },
+    async turn(ms) {
+      await frame();
+      for (const a of moves()) a.currentTime = ms;
+    },
+    ease(x) {
+      curve.currentTime = Math.min(1, Math.max(0, x)) * 1000;
+      return curve.effect.getComputedTiming().progress;
+    },
+  };
+}
+
+// r1 opened on a list that runs well past the fold, then shut once it has settled (turn null) or
+// `turn` ms into the opening. read in the task that shuts it, a row with no drawer move sits where
+// the collapse leaves it, so one on screen with no move is a row that cut into view over the
+// followers still sliding up. mid open r2 has to sit strictly between its shut and open tops, or the
+// turn landed on a drawer that was not moving
 async function collapsePastTheFold(page, turn) {
-  return page.evaluate(async (wait) => {
+  return page.evaluate(async (turn) => {
+    const { settle } = window.drawerClock;
     const lines = Array.from({ length: 6 }, (_, i) => `line ${i + 1} of the detail`).join('\n');
     for (let i = 12; i < 42; i++) {
       const row = document.createElement('gs-row');
@@ -190,14 +221,23 @@ async function collapsePastTheFold(page, turn) {
     const row = document.getElementById('r1');
     const rows = [...document.querySelectorAll('gs-row')].slice(2);
     const top = (el) => el.getBoundingClientRect().top;
+    const shut = top(rows[0]);
     row.toggle(true);
-    await new Promise((res) => setTimeout(res, wait));
+    const h = row.querySelector('[part="clip"]').offsetHeight;
+    if (turn === null) await settle();
+    else await window.drawerClock.turn(turn);
+    const at = top(rows[0]);
     const below = rows.filter((el) => top(el) >= innerHeight);
     row.toggle(false);
     const moves = (el) => el.getAnimations().some((a) => a.id === 'gs-move:drawer');
     const cutIn = rows.filter((el) => top(el) < innerHeight && moves(el) === false).map((el) => el.id);
-    await new Promise((res) => setTimeout(res, 400));
-    return { cutIn, pulledUp: below.filter((el) => top(el) < innerHeight).map((el) => el.id), expanded: row.expanded };
+    await settle();
+    return {
+      cutIn,
+      pulledUp: below.filter((el) => top(el) < innerHeight).map((el) => el.id),
+      expanded: row.expanded,
+      midway: at > shut + 1 && at < shut + h - 1,
+    };
   }, turn);
 }
 
@@ -205,6 +245,7 @@ test.describe('drawer motion', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/test/e2e/pages/drawer.html');
     await page.waitForFunction(() => window.ready === true);
+    await page.evaluate(installDrawerClock);
   });
 
   test('a drawer opened with no input records no layout shift: the rows below move by transform', async ({ page }) => {
@@ -217,7 +258,7 @@ test.describe('drawer motion', () => {
       const row = document.getElementById('r1');
       row.toggle(true);
       const follower = document.getElementById('r2').getAnimations().map((a) => a.id);
-      await new Promise((res) => setTimeout(res, 400));
+      await window.drawerClock.settle();
       return { follower, expanded: row.expanded };
     });
     expect(r.follower).toEqual(['gs-move:drawer']);
@@ -227,51 +268,61 @@ test.describe('drawer motion', () => {
 
   test('toggling 60ms into an opening reverses from where the rows are, with no jump', async ({ page }) => {
     const r = await page.evaluate(async () => {
+      const { frame, settle, turn, moves, shift, ease } = window.drawerClock;
       const row = document.getElementById('r1');
       const next = document.getElementById('r2');
       const top = () => next.getBoundingClientRect().top;
-      const series = (ms, during) => new Promise((resolve) => {
-        const out = [];
-        const t0 = performance.now();
-        during();
-        const f = () => {
-          out.push(top());
-          if (performance.now() - t0 < ms) requestAnimationFrame(f);
-          else resolve(out);
-        };
-        requestAnimationFrame(f);
-      });
-      const fresh = await series(350, () => row.toggle(true));
-      const h = row.querySelector('[part="clip"]').offsetHeight;
-      await series(350, () => row.toggle(false));
+      // r2's top on every frame from the toggle until the drawer lets go, stamped with the frame's time
+      const series = async (first) => {
+        const out = [first];
+        for (;;) {
+          const t = await frame();
+          out.push({ t, y: top() });
+          if (moves().length === 0) break;
+        }
+        out.push({ t: await frame(), y: top() });
+        return out;
+      };
       const base = top();
-      let jump = null;
-      const turned = await series(450, () => {
-        row.toggle(true);
-        // read in the task that turns it: the reverse starts where r2 is, whatever frame it lands on
-        setTimeout(() => {
-          const before = top();
-          row.toggle(false);
-          jump = Math.abs(top() - before);
-        }, 60);
-      });
-      return { fresh, turned, base, h, jump };
+      row.toggle(true);
+      const fresh = await series({ t: document.timeline.currentTime, y: top() });
+      const h = row.querySelector('[part="clip"]').offsetHeight;
+      row.toggle(false);
+      await settle();
+      const shut = top();
+      row.toggle(true);
+      await turn(60);
+      // read in the task that turns it: the reverse starts where r2 is
+      const before = top();
+      row.toggle(false);
+      const after = top();
+      const turned = await series({ t: document.timeline.currentTime, y: after });
+      // the most a plain trip of h moves in each frame's gap, from the steepest start of the curve
+      const over = (xs) => xs.slice(1).map((v, i) => Math.abs(v.y - xs[i].y) - (h * ease((v.t - xs[i].t) / shift) + 2)).filter((d) => d > 0);
+      return { base, shut, h, before, jump: Math.abs(after - before), fresh: fresh.length, turned: turned.length, freshMoved: fresh.some((v) => Math.abs(v.y - base) > 1), freshOver: over(fresh), turnedOver: over(turned), end: turned.at(-1).y, shift };
     });
-    const steps = (xs) => xs.slice(1).map((v, i) => Math.abs(v - xs[i]));
-    // an empty series has a max of -Infinity and passes anything
-    expect(r.fresh.length).toBeGreaterThan(5);
-    expect(r.turned.length).toBeGreaterThan(5);
-    expect(Math.max(...steps(r.fresh))).toBeGreaterThan(0);
+    // the scenario has to happen: r2 moved on the plain open, and the turn caught it mid open
+    expect(r.shift).toBeGreaterThan(0);
     expect(r.h).toBeGreaterThan(0);
+    expect(r.fresh).toBeGreaterThanOrEqual(3);
+    expect(r.turned).toBeGreaterThanOrEqual(3);
+    expect(r.freshMoved).toBe(true);
+    expect(Math.abs(r.shut - r.base)).toBeLessThan(1);
+    expect(r.before).toBeGreaterThan(r.base + 1);
+    expect(r.before).toBeLessThan(r.base + r.h - 1);
     expect(r.jump).toBeLessThan(1);
-    // a cut is one step the size of the drawer; a smooth reverse stays near its steepest frame, about 0.4 of it
-    expect(Math.max(...steps(r.turned))).toBeLessThan(0.6 * r.h);
-    expect(r.turned.at(-1)).toBeCloseTo(r.base, 0);
+    // a cut is one step the size of the drawer; each frame of a smooth run stays under the curve's
+    // share of h for that frame's gap, dropped frames and all. the plain open is the control
+    expect(r.freshOver).toEqual([]);
+    expect(r.turnedOver).toEqual([]);
+    expect(r.end).toBeCloseTo(r.base, 0);
   });
 
   test('collapsing keeps the clip out of flow until the drawer is shut, then hides it', async ({ page }) => {
-    await page.evaluate(() => document.getElementById('r1').toggle(true));
-    await page.waitForTimeout(300);
+    await page.evaluate(async () => {
+      document.getElementById('r1').toggle(true);
+      await window.drawerClock.settle();
+    });
     const during = await page.evaluate(() => {
       const row = document.getElementById('r1');
       row.toggle(false);
@@ -284,7 +335,7 @@ test.describe('drawer motion', () => {
   });
 
   test('a collapse slides the rows it pulls up from below the fold instead of cutting them in', async ({ page }) => {
-    const r = await collapsePastTheFold(page, 400);
+    const r = await collapsePastTheFold(page, null);
     // the scenario has to reach past the fold, or an empty cut list passes on nothing
     expect(r.pulledUp.length).toBeGreaterThan(0);
     expect(r.cutIn).toEqual([]);
@@ -293,8 +344,48 @@ test.describe('drawer motion', () => {
 
   test('a reverse 120ms into an opening slides the rows it pulls up from below the fold too', async ({ page }) => {
     const r = await collapsePastTheFold(page, 120);
+    expect(r.midway).toBe(true);
     expect(r.pulledUp.length).toBeGreaterThan(0);
     expect(r.cutIn).toEqual([]);
     expect(r.expanded).toBe(false);
+  });
+
+  // at the bottom of the page a collapse shrinks the document under the scroller, which clamps
+  // scrollTop and moves every row at once. a slide there clamps twice (at the flip, and again when
+  // the out of flow clip and the held follower moves let go), so it has to be the one cut reduced
+  // motion makes
+  test('a collapse at the bottom of the scroll is one cut, the same as reduced motion', async ({ page }) => {
+    const r = await page.evaluate(async () => {
+      const { frame, settle } = window.drawerClock;
+      const lines = Array.from({ length: 6 }, (_, i) => `line ${i + 1} of the detail`).join('\n');
+      for (let i = 12; i < 42; i++) {
+        const row = document.createElement('gs-row');
+        row.id = `r${i}`;
+        row.setAttribute('status', 'ok');
+        row.setAttribute('label', `row ${i}`);
+        row.append(lines);
+        document.body.append(row);
+      }
+      const row = document.getElementById('r39');
+      const t = (id) => document.getElementById(id).getBoundingClientRect().top;
+      row.toggle(true);
+      await settle();
+      scrollTo(0, document.documentElement.scrollHeight);
+      await frame();
+      await frame();
+      const scrolled = scrollY;
+      row.toggle(false);
+      await frame();
+      const first = { r38: t('r38'), r40: t('r40') };
+      await settle();
+      const settled = { r38: t('r38'), r40: t('r40') };
+      return { scrolled, clamped: scrolled - scrollY, first, settled, expanded: row.expanded };
+    });
+    // the scenario has to reach the clamp, or a still page passes on nothing
+    expect(r.scrolled).toBeGreaterThan(0);
+    expect(r.clamped).toBeGreaterThan(0);
+    expect(r.expanded).toBe(false);
+    expect(Math.abs(r.first.r38 - r.settled.r38)).toBeLessThan(1);
+    expect(Math.abs(r.first.r40 - r.settled.r40)).toBeLessThan(1);
   });
 });

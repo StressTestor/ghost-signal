@@ -22,6 +22,22 @@ function visibleFollowers(row, extra = 0) {
   return out;
 }
 
+// how far a collapse would pull the nearest scroller's scrollTop back. a scroller already at its
+// bottom clamps when the document shrinks under it, and every row moves at once whether it slides
+// or not. any overflow but visible or clip scrolls; body and html hand theirs to the viewport
+function scrollClamp(row, height) {
+  let box = document.scrollingElement ?? document.documentElement;
+  for (let el = row.parentElement; el !== null && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+    const y = getComputedStyle(el).overflowY;
+    if (y !== 'visible' && y !== 'clip') {
+      box = el;
+      break;
+    }
+  }
+  const room = box.scrollHeight - box.clientHeight - box.scrollTop;
+  return Math.min(box.scrollTop, Math.max(0, height - room));
+}
+
 export class GsRow extends Base {
   static observedAttributes = ['status', 'label', 'command', 'sigil'];
 
@@ -104,14 +120,25 @@ export class GsRow extends Base {
 
   toggle(force) {
     const open = force ?? this.expanded === false;
-    const moving = open !== this.expanded && motionAllowed();
+    const changed = open !== this.expanded;
     // measured before the layout flips: the rows below start where they are on screen. closing, the
-    // clip is still in flow here, so its offsetHeight is the height the rows below are about to climb
+    // clip is still in flow here, so its offsetHeight is the height the rows below are about to climb.
+    // a collapse the scroller clamps is a cut: the out of flow clip and the held follower moves keep
+    // the overflow up until they let go, so a slide there clamps twice and drags the rows above along >:[
+    const moving = changed && motionAllowed() && (open || scrollClamp(this, this.#clip.offsetHeight) < 0.5);
     const followers = moving ? visibleFollowers(this, open ? 0 : this.#clip.offsetHeight) : [];
     this.#head.setAttribute('aria-expanded', String(open));
     this.dispatchEvent(new CustomEvent('gs-row-toggle', { bubbles: true, detail: { open } }));
     if (moving) this.#move(open, followers);
+    else if (changed) this.#cut();
     return open;
+  }
+
+  // a cut lands the layout in one frame, so nothing the drawer still runs may keep sliding a row from
+  // where it was. a play with no height cancels every move and settles at once
+  #cut() {
+    this.#clip.removeAttribute('data-leaving');
+    this.#drawer.play({ height: 0 });
   }
 
   #move(open, followers) {
