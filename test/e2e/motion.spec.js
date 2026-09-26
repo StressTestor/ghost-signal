@@ -400,6 +400,55 @@ for (const { op, plainAt } of CARRY) {
   });
 }
 
+// seance's 2hz live batch lands mid open: a keyed rebuild adopts the drawer inside flip, and flip
+// then takes the fresh followers over. its offset was measured with the drawer's already in it, so
+// the next click (a reverse, or a replay) has to count that drawer part once, not twice
+for (const op of ['reverse', 'replay']) for (const at of [10, 40]) {
+  test(`drawer: a ${op} after a keyed live batch ${at}ms into the open flipped the followers keeps every follower where it is`, async ({ page }) => {
+    const r = await page.evaluate(async ({ op, at }) => {
+      const yOf = (el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).m42;
+      const list = document.getElementById('list');
+      const box = document.getElementById('box');
+      const rows = [...list.children];
+      for (const el of rows) el.dataset.key = el.textContent;
+      const d = window.motion.drawer({ height: 28 });
+      // the inner isn't a row, so flip never touches it and the drawer clock stays on it
+      d.play({ inner: box, followers: rows.slice(1), open: true, from: 0 });
+      for (const el of [box, ...rows]) for (const a of el.getAnimations()) a.currentTime = at;
+      let fresh = [];
+      window.motion.flip(rows, () => {
+        fresh = rows.map((el) => Object.assign(document.createElement('div'), { className: 'row', textContent: el.textContent }));
+        for (const el of fresh) el.dataset.key = el.textContent;
+        list.replaceChildren(...fresh);
+        d.adopt({ inner: box, followers: fresh.slice(1) });
+        return fresh;
+      }, { key: (el) => el.dataset.key });
+      // the next click lands 16ms into the flip, on both clocks
+      for (const el of fresh) for (const a of el.getAnimations()) a.currentTime = 16;
+      for (const a of box.getAnimations()) a.currentTime = at + 16;
+      const held = fresh.slice(1).map((el) => el.getAnimations().map((a) => a.id));
+      const p = d.progress;
+      const before = fresh.slice(1).map(yOf);
+      if (op === 'reverse') d.reverse();
+      else d.play({ inner: box, followers: fresh.slice(1), open: true });
+      const after = fresh.slice(1).map(yOf);
+      const ids = fresh.slice(1).map((el) => el.getAnimations().map((a) => a.id));
+      const ok = await d.finished;
+      return { p, held, before, after, ids, ok, left: [box, ...fresh].flatMap((el) => el.getAnimations()).length };
+    }, { op, at });
+    // the scenario has to reach the takeover: flip owns every fresh follower at the call, and the
+    // drawer is far enough from open that counting its offset twice moves a row well over a pixel
+    expect(r.held).toEqual([['gs-move:flip'], ['gs-move:flip'], ['gs-move:flip']]);
+    expect((1 - r.p) * 28).toBeGreaterThan(2);
+    // a reverse with no layout flip turns the plain curve from -(1 - p) * h to p * h, h higher
+    const want = op === 'reverse' ? 28 : 0;
+    for (const [i, y] of r.after.entries()) expect(Math.abs(y - r.before[i] - want)).toBeLessThan(0.5);
+    expect(r.ids).toEqual([['gs-move:drawer'], ['gs-move:drawer'], ['gs-move:drawer']]);
+    expect(r.ok).toBe(true);
+    expect(r.left).toBe(0);
+  });
+}
+
 test('the indicator lands on the current tab without sliding in, then slides by transition', async ({ page }) => {
   const r = await page.evaluate(async () => {
     const tabs = document.getElementById('tabs');
