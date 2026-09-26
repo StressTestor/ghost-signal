@@ -53,3 +53,10 @@ test('scanCss sees rules nested in @media and skips @font-face', async () => {
   assert.equal(out.length, 1);
   assert.equal(out[0].selector, '.z');
 });
+
+test('scanCss refuses a sheet whose braces do not balance, naming the file', async () => {
+  const t = await loadTokens();
+  // a brace in an unquoted url() closes .z early; reading on would check half the sheet
+  const css = '.z { background: url(a}b.png); color: var(--gs-color-etch); }';
+  assert.throws(() => scanCss(css, t, 'src/fx.css'), { code: 'ERR_CSS_UNBALANCED', message: /src\/fx\.css line 1: a '}' that closes nothing/ });
+});

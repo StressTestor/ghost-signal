@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: bad silent</title>
+  <style>
+    body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }
+    /* spans, not buttons: clicking a <button> focuses it, and a focus move is an answer. no text
+       selection either: a selection change is an answer too */
+    .btn { display: inline-block; padding: 4px 12px; border: 1px solid #2a2c2f; cursor: pointer; user-select: none; }
+  </style>
+</head>
+<body>
+  <span class="btn" role="button" id="dead">dead</span>
+  <span class="btn" role="button" id="tick">tick</span>
+  <gs-wallpaper id="wp" data-step="0"></gs-wallpaper>
+  <gs-wallpaper id="bg" data-step="0"></gs-wallpaper>
+  <script>
+    // planted: one control that does nothing, and one whose only change is a wallpaper tick, which
+    // is ambient and never counts as an answer
+    document.getElementById('tick').addEventListener('click', () => {
+      const wp = document.getElementById('wp');
+      wp.dataset.step = String(Number(wp.dataset.step) + 1);
+    });
+    // and a second wallpaper stepping on its own every 40ms the whole time (spec 9.2: ambient
+    // mutations are excluded from settling). if they held steps open, every step here would end as
+    // "never settled" instead of settling as silent
+    const bg = document.getElementById('bg');
+    setInterval(() => { bg.dataset.step = String((Number(bg.dataset.step) + 1) % 4); }, 40);
+  </script>
+</body>
+</html>

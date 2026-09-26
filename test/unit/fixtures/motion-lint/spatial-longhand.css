@@ -1,0 +1,2 @@
+.slide { animation-name: sn-spatial-slide; animation-duration: 200ms; animation-timing-function: steps(4); }
+@keyframes sn-spatial-slide { from { transform: translateX(0); } to { transform: translateX(40px); } }

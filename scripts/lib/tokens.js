@@ -5,8 +5,57 @@ import { readFile } from 'node:fs/promises';
 export const TOKENS_PATH = new URL('../../tokens.json', import.meta.url);
 export const HEADER = 'generated from tokens.json by scripts/gen.js. do not edit';
 
+// spatial durations must land on a vsync at 60hz so no motion ends between two frames (spec 5.1).
+// spec 5.5 finds them by their ease entry (hover excepted). view, shift, indicator and value have
+// no ease entry of their own, so they're named here and validateMotion checks the union (¬‿¬)
+export const SPATIAL_MOTION = Object.freeze(['enter', 'exit', 'view', 'shift', 'indicator', 'value']);
+const DEPRECATED = Object.freeze(['hover']);
+
+export class GsTokenError extends Error {
+  constructor(message) { super(message); this.name = 'GsTokenError'; }
+}
+
+const msOf = (v) => {
+  const m = /^(\d+(?:\.\d+)?)(ms|s)$/.exec(String(v).trim());
+  return m === null ? NaN : Number(m[1]) * (m[2] === 's' ? 1000 : 1);
+};
+
+export function wholeFrames(ms) {
+  return Number.isFinite(ms) && Math.round(Math.round((ms * 60) / 1000) * 1000 / 60) === ms;
+}
+
+// event timing stays stepped, spatial timing stays eased, nothing overshoots. a bad tokens.json
+// fails npm run gen, which fails ci's first step (spec 5.5) >:[
+export function validateMotion(t) {
+  const motion = t.motion ?? {};
+  const step = t.step ?? {};
+  const ease = t.ease ?? {};
+  const errors = [];
+  for (const [k, v] of Object.entries(ease)) {
+    if (String(v).includes('steps(')) errors.push(`ease.${k} is stepped (${v}). stepped timing belongs in step`);
+    const bez = /^cubic-bezier\(([^)]*)\)$/.exec(String(v).trim());
+    if (bez !== null) {
+      const [, y1, , y2] = bez[1].split(',').map((n) => Number(n.trim()));
+      if (!(y1 >= 0 && y1 <= 1 && y2 >= 0 && y2 <= 1)) errors.push(`ease.${k} overshoots: y1 ${y1} and y2 ${y2} must stay inside 0..1`);
+    }
+  }
+  for (const [k, v] of Object.entries(step)) {
+    if (/^steps\(\d+\)$/.test(String(v)) === false) errors.push(`step.${k} must be steps(<int>), got ${v}`);
+  }
+  for (const k of Object.keys(step)) {
+    if (Object.hasOwn(ease, k) && DEPRECATED.includes(k) === false) errors.push(`${k} is in both step and ease. a motion is an event or it is spatial, never both`);
+  }
+  const eased = Object.keys(motion).filter((k) => Object.hasOwn(ease, k) && DEPRECATED.includes(k) === false);
+  for (const k of new Set([...SPATIAL_MOTION, ...eased])) {
+    if (Object.hasOwn(motion, k) && wholeFrames(msOf(motion[k])) === false) errors.push(`motion.${k} is ${motion[k]}, not a whole number of frames at 60hz. use round(frames * 1000 / 60)ms`);
+  }
+  if (errors.length > 0) throw new GsTokenError(`tokens.json motion is invalid:\n${errors.map((e) => `  ${e}`).join('\n')}`);
+}
+
 export async function loadTokens(path = TOKENS_PATH) {
-  return JSON.parse(await readFile(path, 'utf8'));
+  const tokens = JSON.parse(await readFile(path, 'utf8'));
+  validateMotion(tokens);
+  return tokens;
 }
 
 function colorLines(theme) {
@@ -32,6 +81,7 @@ export function toCss(t) {
     ...groupLines('motion-', t.motion),
     ...groupLines('step-', t.step),
     ...groupLines('ease-', t.ease),
+    ...groupLines('distance-', t.distance ?? {}),
   ];
   const light = colorLines(t.color.light);
   const reduced = [
@@ -207,6 +257,12 @@ export function toMarkdown(t) {
     ...group('motion', 'motion-', t.motion),
     ...group('step', 'step-', t.step),
     ...group('ease', 'ease-', t.ease),
+    'deprecated, removed in 0.3: `--gs-motion-hover`, `--gs-ease-hover`. both stay emitted so an old `var()` still resolves, and at 0ms a leftover transition creates no animation.', '',
+    ...group('distance', 'distance-', t.distance ?? {}),
+    '## feel budgets', '',
+    'read by `src/feel/budgets.js` at run time from the tag an app pins. never emitted to css.', '',
+    row('budget', 'value'), row('---', '---'),
+    ...Object.entries(t.feel ?? {}).map(([k, v]) => row(`\`${k}\``, `\`${Array.isArray(v) ? v.join(', ') : v}\``)), '',
     '## contrast', '',
     `minimum ratio ${t.contrast.minimum}:1. text tokens allowed per background:`, '',
     ...Object.entries(t.contrast.textOn).map(([bg, fgs]) => `- \`${bg}\`: ${fgs.map((f) => `\`${f}\``).join(', ')}`),

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: bad task</title>
+  <style>body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }</style>
+</head>
+<body>
+  <p id="status">idle</p>
+  <script>
+    // planted: a 70ms timer with no input anywhere near it. the task check fires, input and answer can't
+    window.later = () => setTimeout(function slowtimer() {
+      const t = performance.now();
+      while (performance.now() - t < 70) document.body.dataset.burn = '1';
+      document.getElementById('status').textContent = 'ran';
+    }, 0);
+  </script>
+</body>
+</html>

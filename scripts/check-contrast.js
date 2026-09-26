@@ -14,10 +14,10 @@ async function main() {
   for (const f of checkTokens(tokens)) {
     lines.push(`tokens: ${f.theme} ${f.fg} on ${f.bg} is ${f.ratio}:1, needs ${tokens.contrast.minimum}:1`);
   }
-  for (const file of ['src/base.css', 'src/fx.css']) {
+  for (const file of ['src/base.css', 'src/fx.css', 'src/motion.css']) {
     const css = await readFile(new URL(file, root), 'utf8').catch(() => null);
     if (css === null) continue;
-    for (const f of scanCss(css, tokens)) lines.push(`${file}: ${f.selector} uses ${f.token}: ${f.reason}`);
+    for (const f of scanCss(css, tokens, file)) lines.push(`${file}: ${f.selector} uses ${f.token}: ${f.reason}`);
   }
   if (lines.length > 0) {
     process.stdout.write(`${lines.join('\n')}\n`);

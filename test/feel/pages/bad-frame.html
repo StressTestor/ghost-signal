@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: bad frame</title>
+  <style>body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }</style>
+</head>
+<body>
+  <p id="status">idle</p>
+  <script>
+    // planted: a rAF callback burning 30ms, ten frames running. 30 is under the 50ms task budget,
+    // so only the frame check may fire
+    window.burnFrames = (n) => new Promise((resolve) => {
+      let left = n;
+      requestAnimationFrame(function burn() {
+        const t = performance.now();
+        while (performance.now() - t < 30) left += 0;
+        document.getElementById('status').textContent = `burned ${n - left + 1}`;
+        left -= 1;
+        if (left > 0) requestAnimationFrame(burn);
+        else resolve();
+      });
+    });
+  </script>
+</body>
+</html>

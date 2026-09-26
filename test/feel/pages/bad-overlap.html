@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: bad overlap</title>
+  <style>
+    body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }
+    .box { width: 120px; height: 24px; margin: 8px 0; background: #1b1f22; transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1); }
+  </style>
+</head>
+<body>
+  <p>planted: a finished enter still attached, then a restack transition</p>
+  <div class="box" id="held">held</div>
+  <script>
+    // planted: an enter animation that finished (fill none) and is still referenced, then a css
+    // transition on the same element's transform. a web animation outranks a transition in
+    // composite order even when finished, so chromium runs the transition on the main thread
+    // (bit 6). the gallery's toast slots did exactly this until motion.js cancelled on finish
+    window.kept = [];
+    window.heldEnter = () => {
+      const a = document.getElementById('held').animate([{ transform: 'translateX(24px)', opacity: 0 }, { transform: 'translateX(0px)', opacity: 1 }], { duration: 100, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', id: 'gs-move:enter' });
+      window.kept.push(a);
+      return a.finished.then(() => {});
+    };
+    window.restack = () => { document.getElementById('held').style.transform = 'translateY(-32px)'; };
+  </script>
+</body>
+</html>

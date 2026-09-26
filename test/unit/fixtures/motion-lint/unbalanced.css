@@ -1,0 +1,5 @@
+/* a brace inside an unquoted url() closes the rule early, so the last one closes nothing */
+:root[data-glitch="1"] .poke {
+  background: url(poke}.png);
+  animation: sn-event-poke 200ms ease-out 1;
+}

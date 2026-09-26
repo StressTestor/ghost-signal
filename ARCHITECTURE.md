@@ -23,8 +23,8 @@ file is committed so a consumer can vendor the repo at a tag with no build step 
 | web | plain es modules and css, light dom components, no bundler, no runtime deps | consumers import files as-is; global css styles `[part="x"]` attributes |
 | generator and cli | node 22+, no dependencies | `scripts/gen.js`, `scripts/ghost-signal.js`, logic in `scripts/lib/` |
 | fonts | doto (ofl) bundled as woff2 | offline, tauri csp, nothing fetched |
-| tests | `node:test` + `@playwright/test` (chromium) against `scripts/serve.js` | contrast, determinism, reduced motion, plug-in probe |
-| ci | github actions, every action pinned to a commit sha | gen diff, unit, contrast, e2e, screenshot artifact |
+| tests | `node:test` + `@playwright/test` (chromium) against `scripts/serve.js`; the `feel` project runs alone | contrast, determinism, reduced motion, plug-in probe, feel budgets |
+| ci | github actions, every action pinned to a commit sha | gen diff, unit, contrast, e2e, feel, runner baseline, report artifacts |
 
 ## tree
 
@@ -33,33 +33,46 @@ tokens.json               the only authored values
 scripts/
   gen.js                  writes src/tokens.css gen/* src/icons.{svg,js} gallery/apps/probe/flavor.{css,js}
   check-contrast.js       exit 1 per failing pair or css rule
-  ghost-signal.js         cli: check | flavor check | flavor build
+  ghost-signal.js         cli: check | flavor check | flavor build | lint-motion
   serve.js                static server on 127.0.0.1:4173 serving the repo root
   fetch-doto.sh           pinned font fetch + woff2 conversion (run once)
-  sync-ghost-signal.sh    copies src/ gen/ schema/ into a no-bundler consumer
-  lib/                    tokens.js contrast.js icons.js schema.js cli.js
+  sync-ghost-signal.sh    copies src/ gen/ schema/ tokens.json into a no-bundler consumer
+  feel-baseline.js        the clean control n times: the runner's frame cpu, stalls, drops, calibration
+  record-feel-fixtures.js dev only: records the chromium traces the trace.js tests read
+  showcase-clips.sh       showcase webm to mp4 clips and stills (ffmpeg)
+  lib/                    tokens.js contrast.js icons.js schema.js cli.js motion-lint.js
 schema/                   app.v1.json flavor.v1.json
 src/
-  tokens.css base.css fx.css icons.svg icons.js (generated)
+  tokens.css base.css fx.css motion.css icons.svg icons.js (generated: tokens.css icons.*)
   icons/*.grid            twenty 16x16 glyph sources
   fonts/                  Doto-VariableFont.woff2 (~8.7kb) OFL.txt SOURCE
-  gs.js grid.js expressions.js copy.js
+  gs.js grid.js expressions.js copy.js motion.js
   components/             mosaic face decode tape window toast row container empty error splash wallpaper palette (13 modules)
+  feel/                   probe.js (in-page recorder) playwright.js (the fixture) trace.js budgets.js evaluate.js format.js errors.js index.js
 gen/                      GhostSignal.swift ghost_signal.rs tokens.md
-gallery/                  index.html gallery.js apps/probe/ screenshots/ (gitignored)
+gallery/                  index.html gallery.js apps/probe/ screenshots/ (gitignored) showcase/ (gitignored)
 test/unit                 node:test
 test/e2e                  playwright specs, pages/, fixtures/, __snapshots__/
+test/feel                 playwright feel project: harness.spec.js (controls), pages/
+test/showcase             the video walk (npm run showcase), not a test suite
 ```
 
 ## key patterns
 
 - semantic tokens only, `gs-` prefix. `--gs-motion-<name>` durations, `--gs-step-<name>` step
-  functions, `--gs-ease-hover`. status aliases `--gs-color-idle|working|crash` point at their tokens.
+  functions, `--gs-ease-<name>` curves, `--gs-distance-<name>` offsets. status aliases
+  `--gs-color-idle|working|crash` point at their tokens. `loadTokens` runs `validateMotion`, so a
+  stepped ease, an eased step, an overshooting curve or a spatial duration off the 60hz frame grid
+  fails `npm run gen`. the `feel` group is read by `src/feel/budgets.js` and never reaches css. the
+  hover pair (`--gs-motion-hover` 0ms, `--gs-ease-hover`) stays emitted until 0.3.
 - the status vocabulary is `idle working ok warn deny bypass crash`. `coerceStatus` turns anything
   else into `warn` with a console error. the face is always green; status lives on dots, bars, toasts.
-- motion is a hard cut. only `color`, `border-color`, `background-color` ease, on hover and focus.
+- state changes are hard cuts. `base.css` declares no transition and no animation: hover, focus and
+  the press (`translateY(1px)` on an active button, row head or palette row) all cut.
   every animation in `fx.css` is gated on `:root[data-glitch="1"]` or `"2"`; reduced motion zeroes
-  the motion tokens and `gs.js` forces `data-glitch="0"` on import.
+  the motion tokens and `gs.js` forces `data-glitch="0"` on import. v0.2 in progress: `motion.css`
+  (optional) and `motion.js` add eased spatial motion on transform and opacity; every helper cancels
+  its web animation when it lands.
 - `gs-mosaic` has no rng and draws integer-aligned rects, so canvas hashes are pinned in
   `test/e2e/__snapshots__/`. `hash()` is `<width>x<height>:<fnv-1a of the getImageData rgba
   bytes>`, synchronous and free of the png encoder, so a browser changing its compression can't
@@ -116,7 +129,7 @@ commit sha with the version in a trailing comment:
 | `actions/upload-artifact` | `b7c566a772e6b6bfb58ed0dc250532a479d7789f` | v6.0.0 |
 
 steps: `npm ci` -> `npm run gen && git diff --exit-code` (generated files must already be current)
--> `npm test` -> `npm run check` -> `npx playwright install --with-deps --only-shell chromium` -> `npm run e2e` (job capped at 20 minutes)
+-> `npm test` -> `npm run check` -> `npx playwright install --with-deps --only-shell chromium` -> `npm run e2e` -> `npm run feel` (10 minute cap) -> upload `test-results/**/feel-*` as `feel-reports` -> `node scripts/feel-baseline.js --runs=5` (informational, continue-on-error) -> upload `feel-baseline` (job capped at 40 minutes)
 -> upload `gallery/screenshots` as an artifact (`if: always()`, ignored if absent). releasing is a
 git tag (`v0.1.0`) pushed to `origin`; consumers pin to it via `github:StressTestor/ghost-signal#v0.1.0`
 or `scripts/sync-ghost-signal.sh`.
@@ -170,6 +183,34 @@ or `gallery/`.
   install --only-shell chromium`); running the tests on node 26 afterwards is fine.
 - problem: `flavor build` throws instead of writing files. cause: it runs `check` internally first.
   fix: read the reported line, fix the manifest or flavor file, re-run.
+- problem: `lint-motion` exits 2 with "nested rules aren't supported". cause: it reads sheets
+  through the flat `cssRules` walker, which would glue a parent's declarations onto a nested
+  rule's selector and drop an `@media` written inside a rule, so a nested sheet would lint clean
+  without being read. fix: flatten the sheet (write each rule's full selector at the top level or
+  inside plain `@media` / `@supports`), then lint again.
+- problem: `lint-motion` exits 2, or `npm run check` exits 2, with "unbalanced braces (<file> line
+  N: ...)". cause: `cssRules` reads strings, escapes and comments as text but counts every other
+  brace, and a count that doesn't come out even would mean part of the sheet went unread. the usual
+  culprit is a brace inside an unquoted `url(...)`. fix: quote the url (`url("a}b.png")`) or
+  close the rule the message names, then run it again.
+- problem: collapsing a `gs-row` near the bottom of a scroll drags the rows above it down, then
+  cuts them back, and the rows below slide the wrong way. cause: the scroller clamps `scrollTop`
+  when the document shrinks, and a sliding collapse keeps the overflow up (the out of flow
+  `data-leaving` clip, the `fill: 'forwards'` follower moves) until the drawer lets go, so it clamps
+  twice. predicting the clamp from one box's room misses: a wrapper with `overflow-x: hidden` or
+  `overflow: hidden` computes to a scroll container that never scrolls, and a fixed-height scroller
+  keeps its height so the page above it never clamps. an app shell that holds `html` at
+  `overflow: hidden` makes `body` the scroller while `scrollingElement` stays `html` at 0. fix:
+  `toggle()` records `scrollTop` on the document's scroller and every ancestor, `body` included,
+  whose `overflow-y` isn't `visible` or `clip` (a propagated `body` reads 0 both times), flips
+  `aria-expanded` with the clip at `display: none`, reads them again (the read forces the layout
+  that clamps), and cuts if any of them moved back, the same single cut reduced motion makes.
+  scroll anchoring moving `scrollTop` for a row shut above the anchor reads the same way and cuts
+  too, which holds the rows on screen still.
+- problem: a drawer e2e test goes red locally under load but passes on ci. cause: a wall clock
+  wait (`setTimeout`, `waitForTimeout`) in a starved renderer can land before a move has started
+  or after it has finished. fix: drive the scenario off the moves' own clock (`currentTime`, a rAF
+  poll until no `gs-move:drawer` is left), as `installDrawerClock` in `row.spec.js` does.
 - problem: `gs-decode` renders empty text. cause: its text only comes from the `text` attribute;
   child text content is read once on first connect and never again. fix: set the `text` attribute,
   not element children.
@@ -184,10 +225,16 @@ npm ci
 npm run gen && git diff --exit-code
 npm test
 npm run check
-npm run e2e
+npm run e2e   # the chromium project only
+npm run feel
+GS_FEEL_RUNS=1 npm run feel
+npm run showcase   # video of every motion at glitch 0, 1, 2 into gallery/showcase/
 npm run serve
 node scripts/ghost-signal.js check gallery/apps/probe/app.json
+node scripts/ghost-signal.js lint-motion 'src/*.css'
 DEST=vendor/ghost-signal scripts/sync-ghost-signal.sh v0.1.0
+node scripts/feel-baseline.js --runs=20 --dpr=2
+node scripts/record-feel-fixtures.js
 ```
 
-last updated: 2026-09-23 (v0.1.0)
+last updated: 2026-09-26 (v0.2 in progress, final review fixes)

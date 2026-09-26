@@ -1,5 +1,6 @@
 /* ghost signal base layer. tokens come from tokens.css; this file authors no color value.
-   easing exists only on the three properties below, only on hover and focus. everything else cuts (¬‿¬) */
+   nothing here eases or animates: hover, focus and the press are cuts. spatial motion lives in
+   motion.css and event motion in fx.css (¬‿¬) */
 
 @font-face {
   font-family: "Doto";
@@ -50,7 +51,6 @@ button {
   color: var(--gs-color-text);
   cursor: pointer;
   text-transform: lowercase;
-  transition: color var(--gs-motion-hover) var(--gs-ease-hover), border-color var(--gs-motion-hover) var(--gs-ease-hover), background-color var(--gs-motion-hover) var(--gs-ease-hover);
 }
 button:hover { border-color: var(--gs-color-accent); }
 button:disabled { cursor: not-allowed; color: var(--gs-color-text-muted); border-color: var(--gs-color-hairline); }
@@ -60,6 +60,8 @@ button[data-variant="ghost"] { background-color: transparent; border-color: tran
 button[data-variant="ghost"]:hover { color: var(--gs-color-text); border-color: var(--gs-color-hairline); }
 button[data-variant="danger"] { background-color: transparent; border-color: var(--gs-color-deny); color: var(--gs-color-deny); }
 button[data-variant="danger"]:hover { background-color: var(--gs-color-deny); color: var(--gs-color-on-accent); }
+/* the press: a 1px drop on the frame after pointerdown, no transition. the fastest answer there is */
+button:active:not(:disabled), gs-row [part="head"]:active, gs-palette [part="row"]:active { transform: translateY(1px); }
 
 input, select, textarea {
   font-family: var(--gs-font-mono);
@@ -69,7 +71,6 @@ input, select, textarea {
   border-radius: var(--gs-radius-control);
   background-color: var(--gs-color-raised);
   color: var(--gs-color-text);
-  transition: color var(--gs-motion-hover) var(--gs-ease-hover), border-color var(--gs-motion-hover) var(--gs-ease-hover), background-color var(--gs-motion-hover) var(--gs-ease-hover);
 }
 input::placeholder, textarea::placeholder { color: var(--gs-color-text-muted); }
 input:hover, select:hover, textarea:hover { border-color: var(--gs-color-text-muted); }
@@ -152,7 +153,6 @@ textarea { resize: vertical; min-height: 4em; }
   color: var(--gs-color-text-muted);
   text-transform: lowercase;
   cursor: pointer;
-  transition: color var(--gs-motion-hover) var(--gs-ease-hover), border-color var(--gs-motion-hover) var(--gs-ease-hover), background-color var(--gs-motion-hover) var(--gs-ease-hover);
 }
 .gs-nav-item:hover { color: var(--gs-color-text); background-color: var(--gs-color-surface); }
 .gs-nav-item[aria-current="page"], .gs-nav-item[aria-current="true"] { border-left-color: var(--gs-color-accent); color: var(--gs-color-text); }
@@ -171,13 +171,29 @@ textarea { resize: vertical; min-height: 4em; }
 
 .gs-icon { width: 16px; height: 16px; fill: currentColor; vertical-align: -3px; }
 
+/* the hairline under a sticky header. motion.css fades it in with scroll; without motion it just shows */
+.gs-scroll-edge { display: block; height: 1px; background-color: var(--gs-color-hairline); }
+
+/* the bar motion.js places. it travels and stretches along data-axis inside a position: relative
+   container, from a 100px base; the cross axis is set here */
+[part="indicator"] { position: absolute; left: 0; top: 0; pointer-events: none; transform-origin: 0 0; }
+[part="indicator"][data-axis="x"] { top: auto; bottom: 0; width: 100px; height: var(--gs-bar); background-color: var(--gs-color-accent); }
+[part="indicator"][data-axis="y"] { width: var(--gs-bar); height: 100px; background-color: var(--gs-color-accent); }
+
 /* components. light dom, so every rule is a plain attribute selector */
 
 gs-mosaic, gs-face { display: inline-block; line-height: 0; }
 gs-mosaic canvas { display: block; image-rendering: pixelated; }
 
-gs-decode { display: inline; }
-gs-decode[data-playing] { font-family: var(--gs-font-mono); }
+/* while playing, a hidden copy of the final text in the host's font holds the box, and the
+   scramble draws over it in mono. generated content is in neither textContent nor innerText.
+   mono is wider than the box it draws in, so the overlay never wraps: wrapped, the clip ate whole
+   words. one line, right edge clipped, and a wrapping host's lower lines sit blank until it lands.
+   only x clips: on a line-height 1 host (the wordmark) mono ink hangs past the box, and a y clip
+   ate every descender. one line means anything down there is overhang, never a hidden line (¬‿¬) */
+gs-decode { display: inline-block; position: relative; }
+gs-decode[data-playing]::after { content: attr(data-final); visibility: hidden; }
+gs-decode[data-playing] [part="text"] { position: absolute; inset: 0; overflow: clip visible; white-space: nowrap; font-family: var(--gs-font-mono); }
 
 gs-tape {
   --gs-tape-color: var(--gs-color-bypass);
@@ -196,12 +212,15 @@ gs-tape [part="track"] { display: inline-block; }
 
 gs-window { display: none; position: fixed; inset: 0; z-index: 100; }
 gs-window[open] { display: block; }
+/* an overlay stays displayed through its 100ms exit after open is gone, and takes no clicks */
+gs-palette[data-leaving], gs-window[data-leaving] { display: block; pointer-events: none; }
 gs-window [part="backdrop"] { position: absolute; inset: 0; background-color: var(--gs-color-void); opacity: 0.6; }
 gs-window [part="frame"] {
   position: absolute;
   top: 20vh;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  margin-inline: auto;
   width: min(520px, calc(100vw - 2 * var(--gs-space-4)));
   background-color: var(--gs-color-surface);
   border: 1px solid var(--gs-color-etch);
@@ -224,7 +243,10 @@ gs-window [part="titlebar"] {
 gs-window [part="close"] { padding: var(--gs-space-1) var(--gs-space-2); line-height: 0; }
 gs-window [part="body"] { padding: var(--gs-space-4); }
 
-gs-toast { position: fixed; right: var(--gs-space-4); bottom: var(--gs-space-4); display: flex; flex-direction: column; gap: var(--gs-space-2); z-index: 90; width: min(360px, calc(100vw - 2 * var(--gs-space-4))); }
+/* a zero-height anchor at bottom right. every item rides in a slot pinned to the anchor's bottom,
+   and its place in the stack is a translateY toast.js writes. layout positions never change */
+gs-toast { position: fixed; right: var(--gs-space-4); bottom: var(--gs-space-4); z-index: 90; width: min(360px, calc(100vw - 2 * var(--gs-space-4))); height: 0; }
+gs-toast [part="slot"] { position: absolute; right: 0; bottom: 0; width: 100%; }
 gs-toast [part="item"] {
   display: flex;
   align-items: center;
@@ -244,7 +266,7 @@ gs-toast [part="item"][data-status="crash"] { border-left-color: var(--gs-color-
 gs-toast [part="kaomoji"] { font-family: var(--gs-font-mono); color: var(--gs-color-text-muted); }
 gs-toast [part="ok"] { margin-left: auto; }
 
-gs-row { display: block; border-left: var(--gs-bar) solid var(--gs-color-idle); border-bottom: var(--gs-border); }
+gs-row { position: relative; display: block; border-left: var(--gs-bar) solid var(--gs-color-idle); border-bottom: var(--gs-border); }
 gs-row[status="working"] { border-left-color: var(--gs-color-working); }
 gs-row[status="ok"] { border-left-color: var(--gs-color-ok); }
 gs-row[status="warn"] { border-left-color: var(--gs-color-warn); }
@@ -259,23 +281,27 @@ gs-row [part="head"] {
   gap: var(--gs-space-3);
   padding: var(--gs-space-2) var(--gs-space-3);
   cursor: pointer;
-  transition: color var(--gs-motion-hover) var(--gs-ease-hover), border-color var(--gs-motion-hover) var(--gs-ease-hover), background-color var(--gs-motion-hover) var(--gs-ease-hover);
 }
 gs-row [part="head"]:hover { background-color: var(--gs-color-surface); }
 gs-row [part="sigil"] { font-family: var(--gs-font-mono); color: var(--gs-color-text-muted); min-width: 1.5em; }
 gs-row [part="label"] { text-transform: lowercase; }
 gs-row [part="command"] { font-family: var(--gs-font-mono); font-size: var(--gs-size-mono); color: var(--gs-color-text-muted); }
-gs-row [part="detail"] { display: none; margin: 0 var(--gs-space-3) var(--gs-space-3) var(--gs-space-5); padding: var(--gs-space-3); background-color: var(--gs-color-raised); color: var(--gs-color-text); font-family: var(--gs-font-mono); font-size: var(--gs-size-mono); border-radius: var(--gs-radius-control); white-space: pre-wrap; }
-gs-row [part="head"][aria-expanded="true"] + [part="detail"] { display: block; }
+gs-row [part="detail"] { margin: 0 var(--gs-space-3) var(--gs-space-3) var(--gs-space-5); padding: var(--gs-space-3); background-color: var(--gs-color-raised); color: var(--gs-color-text); font-family: var(--gs-font-mono); font-size: var(--gs-size-mono); border-radius: var(--gs-radius-control); white-space: pre-wrap; }
+/* the detail rides in a clip. open, the clip is in flow; collapsing, it leaves the flow so the
+   rows below can close up by transform while the detail rolls up inside it */
+gs-row [part="clip"] { display: none; overflow: hidden; }
+gs-row [part="head"][aria-expanded="true"] + [part="clip"] { display: block; }
+gs-row [part="clip"][data-leaving] { display: block; position: absolute; inset-inline: 0; }
 
 gs-palette { display: none; position: fixed; inset: 0; z-index: 110; }
 gs-palette[open] { display: block; }
 gs-palette [part="overlay"] { position: absolute; inset: 0; background-color: var(--gs-color-void); opacity: 0.6; }
-gs-palette [part="box"] { position: absolute; top: 15vh; left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 2 * var(--gs-space-4))); background-color: var(--gs-color-surface); border: 1px solid var(--gs-color-etch); border-radius: var(--gs-radius-panel); overflow: hidden; }
+gs-palette [part="box"] { position: absolute; top: 15vh; left: 0; right: 0; margin-inline: auto; width: min(560px, calc(100vw - 2 * var(--gs-space-4))); background-color: var(--gs-color-surface); border: 1px solid var(--gs-color-etch); border-radius: var(--gs-radius-panel); overflow: hidden; }
 gs-palette [part="input"] { width: 100%; border: 0; border-bottom: var(--gs-border); border-radius: 0; padding: var(--gs-space-3); }
-gs-palette [part="list"] { margin: 0; padding: var(--gs-space-1) 0; list-style: none; max-height: 40vh; overflow-y: auto; }
-gs-palette [part="row"] { display: flex; justify-content: space-between; padding: var(--gs-space-1) var(--gs-space-3); cursor: pointer; text-transform: lowercase; }
-gs-palette [part="row"][aria-selected="true"] { background-color: var(--gs-color-raised); color: var(--gs-color-text); }
+gs-palette [part="list"] { position: relative; margin: 0; padding: var(--gs-space-1) 0; list-style: none; max-height: 40vh; overflow-y: auto; }
+gs-palette [part="row"] { position: relative; display: flex; justify-content: space-between; padding: var(--gs-space-1) var(--gs-space-3); cursor: pointer; text-transform: lowercase; }
+gs-palette [part="row"][aria-selected="true"] { color: var(--gs-color-text); }
+gs-palette [part="indicator"][data-axis="y"] { left: 0; right: 0; width: auto; background-color: var(--gs-color-raised); }
 gs-palette [part="row"] kbd { color: var(--gs-color-text-muted); }
 
 gs-empty, gs-error, gs-splash {

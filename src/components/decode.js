@@ -65,6 +65,9 @@ export class GsDecode extends Base {
       return;
     }
     const frames = scrambleFrames(text, steps, GS.random);
+    // the final text rides in data-final while the scramble plays: base.css prints it hidden in the
+    // host's own font to hold the box, so the width never changes mid-decode (spec 6.3)
+    this.setAttribute('data-final', text);
     this.setAttribute('data-playing', '');
     let i = 0;
     const tick = () => {
@@ -79,6 +82,7 @@ export class GsDecode extends Base {
   #finish(text) {
     this.#span.textContent = text;
     this.removeAttribute('data-playing');
+    this.removeAttribute('data-final');
     this.dispatchEvent(new CustomEvent('gs-decode-done', { bubbles: true }));
   }
 }
