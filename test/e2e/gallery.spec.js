@@ -388,6 +388,29 @@ test('query params land the gallery at a glitch level and theme with one navigat
   expect(await page.evaluate(() => [document.documentElement.dataset.glitch, document.documentElement.dataset.theme])).toEqual(['2', 'light']);
 });
 
+test('?glitch=0 lands before the first decode upgrades, so nothing scrambles on load', async ({ page }) => {
+  // the wordmark and the empty, error and splash copy are static <gs-decode>s in the html. they
+  // upgrade when the component modules define them, before gallery.js's own body runs, so the
+  // param has to be on <html> by then or they scramble at the html default level 1
+  await page.goto('/gallery/?glitch=0');
+  await page.waitForSelector('html[data-gallery-ready]');
+  const r = await page.evaluate(() => ({
+    glitch: document.documentElement.dataset.glitch,
+    decodes: document.querySelectorAll('gs-decode').length,
+    playing: document.querySelectorAll('gs-decode[data-playing]').length,
+  }));
+  expect(r.glitch).toBe('0');
+  expect(r.decodes).toBeGreaterThanOrEqual(4);
+  expect(r.playing).toBe(0);
+});
+
+test('reduced motion beats ?glitch=2', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/gallery/?glitch=2');
+  await page.waitForSelector('html[data-gallery-ready]');
+  expect(await page.evaluate(() => [document.documentElement.dataset.glitch, document.querySelectorAll('gs-decode[data-playing]').length])).toEqual(['0', 0]);
+});
+
 test('the motion section: a view enters from its side, the tab indicator follows, the list has 300 rows', async ({ page }) => {
   await open(page);
   const r = await page.evaluate(() => {
@@ -412,13 +435,23 @@ test('the motion section: a view enters from its side, the tab indicator follows
 
 test('a toast burst from the motion section shifts nothing', async ({ page }) => {
   await open(page);
-  const shifts = await page.evaluate(async () => {
+  const r = await page.evaluate(async () => {
     const t0 = performance.now();
     const out = [];
-    new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.startTime > t0) out.push(e.value); }).observe({ type: 'layout-shift', buffered: true });
+    const keep = (entries) => { for (const e of entries) if (e.startTime > t0) out.push(e.value); };
+    const po = new PerformanceObserver((l) => keep(l.getEntries()));
+    po.observe({ type: 'layout-shift', buffered: true });
     window.gallery.burst(5);
     await new Promise((res) => setTimeout(res, 600));
-    return out;
+    // entries arrive async, so a shift late in the window can still be queued. drain it
+    keep(po.takeRecords());
+    po.disconnect();
+    return {
+      supported: PerformanceObserver.supportedEntryTypes.includes('layout-shift'),
+      items: document.querySelectorAll('#toasts [part="item"]').length,
+      shifts: out,
+    };
   });
-  expect(shifts).toEqual([]);
+  // an empty shift list only means something when the observer can see shifts and the toasts drew
+  expect(r).toEqual({ supported: true, items: 5, shifts: [] });
 });

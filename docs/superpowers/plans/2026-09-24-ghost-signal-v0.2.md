@@ -7510,14 +7510,16 @@ add this section between `#chrome` and `#states`:
 
 - [ ] **Step 3: gallery.js**
 
-extend the `gs.js` import with `reducedMotion`, and add `import { enter, enterView, flip, indicator } from '../src/motion.js';` after the component imports. right after `const html = document.documentElement;`:
+add `import { enter, enterView, flip, indicator } from '../src/motion.js';` after the component imports.
+
+amended in the task 21 review: the query params land in the classic `<script>` in `gallery/index.html`'s head, after `addEventListener('error', galleryFailed);`, and not in gallery.js. the static `<gs-decode>`s (the wordmark and the empty, error and splash copy) upgrade when the component imports define them, before the module body runs, so a param set in gallery.js left `?glitch=0` scrambling four decodes on load. reduced motion still wins because gs.js forces glitch 0 on import, after the head script:
 
 ```js
-// ?glitch=0|1|2&theme=dark|light lands a feel setup in a known state with one navigation. reduced
-// motion wins over the glitch param: gs.js already forced glitch 0 on import
-const params = new URLSearchParams(location.search);
-if (['dark', 'light'].includes(params.get('theme'))) html.dataset.theme = params.get('theme');
-if (['0', '1', '2'].includes(params.get('glitch')) && reducedMotion() === false) html.dataset.glitch = params.get('glitch');
+{
+  const params = new URLSearchParams(location.search);
+  if (['dark', 'light'].includes(params.get('theme'))) document.documentElement.dataset.theme = params.get('theme');
+  if (['0', '1', '2'].includes(params.get('glitch'))) document.documentElement.dataset.glitch = params.get('glitch');
+}
 ```
 
 add the motion section's functions after `wireChrome`:

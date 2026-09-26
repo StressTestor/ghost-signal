@@ -41,6 +41,15 @@
     // reaches the console); a module that 404s fires on its own script tag, hence the onerror
     const galleryFailed = () => { document.documentElement.dataset.galleryFailed = ''; };
     addEventListener('error', galleryFailed);
+    // ?glitch=0|1|2&theme=dark|light lands a feel setup in a known state with one navigation. it
+    // lives here, ahead of the module, because the static <gs-decode>s upgrade the moment their
+    // component modules define them and read the glitch level right then; set any later and ?glitch=0
+    // still scrambles the wordmark on load. reduced motion still wins: gs.js forces glitch 0 on import
+    {
+      const params = new URLSearchParams(location.search);
+      if (['dark', 'light'].includes(params.get('theme'))) document.documentElement.dataset.theme = params.get('theme');
+      if (['0', '1', '2'].includes(params.get('glitch'))) document.documentElement.dataset.glitch = params.get('glitch');
+    }
   </script>
   <script type="module" src="./gallery.js" onerror="galleryFailed()"></script>
 </head>

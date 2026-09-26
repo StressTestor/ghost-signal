@@ -1,6 +1,6 @@
 // the by-eye surface. renders every component in every status, wires the theme and glitch
 // switches, mounts the probe app through the plug-in contract and nothing else (｡◕‿↼)
-import { GS, STATUSES, registerCommands, registerSprite, injectIcons, listIcons, startAmbient, reducedMotion } from '../src/gs.js';
+import { GS, STATUSES, registerCommands, registerSprite, injectIcons, listIcons, startAmbient } from '../src/gs.js';
 import { KAOMOJI } from '../src/expressions.js';
 import { copy } from '../src/copy.js';
 import '../src/components/mosaic.js';
@@ -17,11 +17,6 @@ import '../src/components/palette.js';
 import { enter, enterView, flip, indicator } from '../src/motion.js';
 
 const html = document.documentElement;
-// ?glitch=0|1|2&theme=dark|light lands a feel setup in a known state with one navigation. reduced
-// motion wins over the glitch param: gs.js already forced glitch 0 on import
-const params = new URLSearchParams(location.search);
-if (['dark', 'light'].includes(params.get('theme'))) html.dataset.theme = params.get('theme');
-if (['0', '1', '2'].includes(params.get('glitch')) && reducedMotion() === false) html.dataset.glitch = params.get('glitch');
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, attrs = {}, text = '') => {
   const node = document.createElement(tag);
