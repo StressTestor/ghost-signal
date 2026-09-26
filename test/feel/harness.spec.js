@@ -96,6 +96,41 @@ test('feel.selfTest() sees the planted shift on a page laid out in a row', async
   expect(result.seen).toEqual(expect.arrayContaining(['input', 'shift', 'task']));
 });
 
+// sveltekit's default app.html puts the whole app in a display: contents div. that wrapper has no
+// box of its own, so the planted row's moves have to be read off what it holds, in a block body and
+// in a body laid out in a row
+for (const layout of ['block', 'row']) {
+  test(`feel.selfTest() sees the planted shift through a display: contents wrapper, ${layout} body`, async ({ page, feel }) => {
+    test.setTimeout(60_000);
+    await page.goto(url('clean'));
+    await page.evaluate(() => window.__gsFeel.ready());
+    const probe = await page.evaluate((layout) => {
+      if (layout === 'row') {
+        for (const el of [...document.body.children]) if (el.localName !== 'script') el.remove();
+        document.body.style.cssText = 'display:flex;flex-direction:row;align-items:flex-start;gap:8px;margin:0';
+        const aside = document.createElement('aside');
+        aside.style.cssText = 'width:200px;height:400px';
+        aside.textContent = 'sidebar';
+        const main = document.createElement('main');
+        main.style.cssText = 'width:600px;height:400px';
+        main.textContent = 'main';
+        document.body.append(aside, main);
+      }
+      const app = document.createElement('div');
+      app.style.display = 'contents';
+      app.append(...[...document.body.children].filter((el) => el.localName !== 'script'));
+      document.body.prepend(app);
+      const box = app.getBoundingClientRect();
+      // the wrapper really has no box, or this is the plain page again
+      return { children: [...document.body.children].filter((el) => el.localName !== 'script').length, w: box.width, h: box.height };
+    }, layout);
+    expect(probe).toEqual({ children: 1, w: 0, h: 0 });
+    await page.waitForTimeout(300);
+    const result = await feel.selfTest();
+    expect(result.seen).toEqual(['input', 'shift', 'task']);
+  });
+}
+
 test('feel.selfTest() never credits an earlier shift for the planted one', async ({ page, feel }) => {
   test.setTimeout(60_000);
   await page.goto(url('untrusted'));

@@ -384,8 +384,11 @@ export function installProbe() {
           // index can't: a page that never goes quiet holds step 0 open past the landing. how far the
           // row pushes things depends on the page (margins collapse, a centered body moves half, a
           // body laid out in a row moves its siblings sideways), so both axes are read here, before
-          // and after, in one task the page's own frames can't get into XX
-          const kids = [...document.body.children].filter((el) => el.hasAttribute('data-gs-feel-planted') === false);
+          // and after, in one task the page's own frames can't get into XX. a display: contents
+          // wrapper (sveltekit's app.html div) has no box and reads 0,0 before and after, so it's
+          // read through to what it holds
+          const boxes = (el) => (getComputedStyle(el).display === 'contents' ? [...el.children].flatMap(boxes) : [el]);
+          const kids = [...document.body.children].filter((el) => el.hasAttribute('data-gs-feel-planted') === false).flatMap(boxes);
           const before = kids.map((el) => el.getBoundingClientRect());
           state.plantedAt = now();
           document.body.prepend(row);
