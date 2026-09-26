@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 
 const STATUSES = ['idle', 'working', 'ok', 'warn', 'deny', 'bypass', 'crash'];
 
@@ -388,27 +389,39 @@ test('query params land the gallery at a glitch level and theme with one navigat
   expect(await page.evaluate(() => [document.documentElement.dataset.glitch, document.documentElement.dataset.theme])).toEqual(['2', 'light']);
 });
 
+// every gs-decode that ever gets data-playing, from the first byte of the page. a one-time sample
+// at data-gallery-ready misses a decode that played and finished while the probe app and the fonts
+// loaded, so it goes green on the very bug it pins whenever that gap outruns the 250ms decode
+function recordDecodes() {
+  window.__played = [];
+  new MutationObserver((ms) => {
+    for (const m of ms) if (m.target.hasAttribute('data-playing')) window.__played.push(m.target.id || m.target.getAttribute('text'));
+  }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-playing'] });
+}
+
 test('?glitch=0 lands before the first decode upgrades, so nothing scrambles on load', async ({ page }) => {
   // the wordmark and the empty, error and splash copy are static <gs-decode>s in the html. they
   // upgrade when the component modules define them, before gallery.js's own body runs, so the
   // param has to be on <html> by then or they scramble at the html default level 1
+  await page.addInitScript(recordDecodes);
   await page.goto('/gallery/?glitch=0');
   await page.waitForSelector('html[data-gallery-ready]');
   const r = await page.evaluate(() => ({
     glitch: document.documentElement.dataset.glitch,
     decodes: document.querySelectorAll('gs-decode').length,
-    playing: document.querySelectorAll('gs-decode[data-playing]').length,
+    played: window.__played,
   }));
   expect(r.glitch).toBe('0');
   expect(r.decodes).toBeGreaterThanOrEqual(4);
-  expect(r.playing).toBe(0);
+  expect(r.played).toEqual([]);
 });
 
 test('reduced motion beats ?glitch=2', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.addInitScript(recordDecodes);
   await page.goto('/gallery/?glitch=2');
   await page.waitForSelector('html[data-gallery-ready]');
-  expect(await page.evaluate(() => [document.documentElement.dataset.glitch, document.querySelectorAll('gs-decode[data-playing]').length])).toEqual(['0', 0]);
+  expect(await page.evaluate(() => [document.documentElement.dataset.glitch, window.__played])).toEqual(['0', []]);
 });
 
 test('the motion section: a view enters from its side, the tab indicator follows, the list has 300 rows', async ({ page }) => {
@@ -433,25 +446,58 @@ test('the motion section: a view enters from its side, the tab indicator follows
   await expect(page.locator('#motion-view .motion-view-body')).toHaveAttribute('data-view', '0');
 });
 
+// two waves inside one observation window. a single burst can't catch a stack that moves slots by
+// layout: all five slots are new in the same frame, so there's no earlier slot on screen to shift.
+// the second wave restacks the first two after they've landed, which is where a layout move shows
+async function twoWaveBurst() {
+  const t0 = performance.now();
+  const out = [];
+  const keep = (entries) => { for (const e of entries) if (e.startTime > t0) out.push(e.value); };
+  const po = new PerformanceObserver((l) => keep(l.getEntries()));
+  po.observe({ type: 'layout-shift', buffered: true });
+  window.gallery.burst(2);
+  const entering = document.querySelectorAll('#toasts [data-entering]').length;
+  // the 167ms enter has to land before the next restack, and a fixed sleep can lose that race on a
+  // slow runner. poll the frames instead, and fail loud past 5s
+  const deadline = performance.now() + 5000;
+  while (document.querySelector('#toasts [data-entering]') !== null) {
+    if (performance.now() > deadline) throw new Error('the first wave never landed');
+    await new Promise((res) => requestAnimationFrame(res));
+  }
+  // the enter's finish resolves in the same frame's animation step, before these rAF callbacks, so
+  // the landing restack isn't painted yet. a slot never painted at its landed place can't shift
+  // from it, and the control below goes quiet. two more frames put the landed stack on screen
+  for (let i = 0; i < 2; i++) await new Promise((res) => requestAnimationFrame(res));
+  window.gallery.burst(3);
+  await new Promise((res) => setTimeout(res, 600));
+  // entries arrive async, so a shift late in the window can still be queued. drain it
+  keep(po.takeRecords());
+  po.disconnect();
+  return {
+    supported: PerformanceObserver.supportedEntryTypes.includes('layout-shift'),
+    entering,
+    items: document.querySelectorAll('#toasts [part="item"]').length,
+    shifts: out,
+  };
+}
+
 test('a toast burst from the motion section shifts nothing', async ({ page }) => {
   await open(page);
-  const r = await page.evaluate(async () => {
-    const t0 = performance.now();
-    const out = [];
-    const keep = (entries) => { for (const e of entries) if (e.startTime > t0) out.push(e.value); };
-    const po = new PerformanceObserver((l) => keep(l.getEntries()));
-    po.observe({ type: 'layout-shift', buffered: true });
-    window.gallery.burst(5);
-    await new Promise((res) => setTimeout(res, 600));
-    // entries arrive async, so a shift late in the window can still be queued. drain it
-    keep(po.takeRecords());
-    po.disconnect();
-    return {
-      supported: PerformanceObserver.supportedEntryTypes.includes('layout-shift'),
-      items: document.querySelectorAll('#toasts [part="item"]').length,
-      shifts: out,
-    };
-  });
-  // an empty shift list only means something when the observer can see shifts and the toasts drew
-  expect(r).toEqual({ supported: true, items: 5, shifts: [] });
+  const r = await page.evaluate(twoWaveBurst);
+  // an empty shift list only means something when the observer can see shifts, the first wave was
+  // really entering (so the wait waited on something) and all five toasts drew
+  expect(r).toEqual({ supported: true, entering: 2, items: 5, shifts: [] });
+});
+
+test('the toast burst scenario sees a shift when the stack moves slots by layout', async ({ page }) => {
+  // positive control for the test above: same scenario, toast.js restacking through `bottom`
+  // instead of transform. if this goes quiet, the empty list above proves nothing
+  const src = readFileSync(new URL('../../src/components/toast.js', import.meta.url), 'utf8');
+  const mutant = src.replace('s.style.transform = `translateY(${offsets[i]}px)`', 's.style.bottom = `${-offsets[i]}px`');
+  expect(mutant).not.toBe(src);
+  await page.route('**/src/components/toast.js', (r) => r.fulfill({ contentType: 'text/javascript', body: mutant }));
+  await open(page);
+  const r = await page.evaluate(twoWaveBurst);
+  expect(r).toMatchObject({ supported: true, entering: 2, items: 5 });
+  expect(r.shifts.length).toBeGreaterThan(0);
 });
