@@ -221,3 +221,45 @@ test('dismissing the newest slides it out, removes it, then the older slot close
   // and it got there on screen, not only in its style attribute
   await expect.poll(() => page.evaluate(() => new DOMMatrixReadOnly(getComputedStyle(document.querySelector('#toasts [part="slot"]')).transform).m42)).toBe(0);
 });
+
+// the arrival that lands on a slot still entering. the restack mustn't write that slot's offset
+// until its enter lands, or the css transition starts under the web animation, runs out hidden,
+// and the slot cuts to its place the frame the enter is cancelled. every other test here passes
+// with that guard gone, so this one watches the older slot frame by frame (¬‿¬)
+test('a slot still entering keeps offset 0 until it lands, then eases to its place', async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const raf = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const t = document.getElementById('toasts');
+    const older = t.toast({ status: 'deny', text: 'one' }).parentElement;
+    for (let i = 0; i < 3; i++) await raf();
+    const enteringAtArrival = older.hasAttribute('data-entering');
+    t.toast({ status: 'deny', text: 'two' });
+    const y = () => new DOMMatrixReadOnly(getComputedStyle(older).transform).m42;
+    const during = [];
+    const snap = () => during.push({ transform: older.style.transform, ids: older.getAnimations().map((a) => a.id), y: y() });
+    snap();
+    for (let i = 0; i < 120 && older.hasAttribute('data-entering'); i++) {
+      await raf();
+      if (older.hasAttribute('data-entering')) snap();
+    }
+    const landed = older.getAnimations().map((a) => ({ id: a.id, property: a.transitionProperty ?? null }));
+    const path = [y()];
+    for (let i = 0; i < 120 && older.getAnimations().length > 0; i++) {
+      await raf();
+      path.push(y());
+    }
+    return { enteringAtArrival, during, landed, path, final: older.style.transform, stillEntering: older.hasAttribute('data-entering') };
+  });
+  // no enter still running when the second toast arrived, no case to test
+  expect(r.enteringAtArrival).toBe(true);
+  expect(r.stillEntering).toBe(false);
+  expect(r.during.length).toBeGreaterThan(0);
+  for (const d of r.during) expect(d).toEqual({ transform: 'translateY(0px)', ids: ['gs-move:enter'], y: 0 });
+  // the enter is gone and the restack runs as a transform transition, from 0
+  expect(r.landed).toEqual([{ id: '', property: 'transform' }]);
+  const target = Number(/translateY\((-?[\d.]+)px\)/.exec(r.final)?.[1]);
+  expect(target).toBeLessThan(0);
+  // eased, not cut: at least one frame caught strictly between 0 and the place, then it settles there
+  expect(r.path.some((v) => v < 0 && v > target)).toBe(true);
+  expect(r.path.at(-1)).toBeCloseTo(target, 3);
+});
