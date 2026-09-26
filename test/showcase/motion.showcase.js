@@ -71,6 +71,9 @@ const EVENT = {
   'crash-toast-mosh': async (page) => { await into(page, '#toast-buttons'); await click(page, '[data-toast-pick="crash"]'); },
   'deny-row-flare': async (page) => {
     await into(page, '#row-list');
+    // the deny row already flared on connect, and that flare's timer strips gs-flare mid-way
+    // through a restarted one. wait it out or the clip shows 250ms of a 640ms flare >:[
+    await page.waitForFunction(() => !document.querySelector('#row-list gs-row[status="deny"]').classList.contains('gs-flare'));
     await page.evaluate(async () => {
       const { flareOnce } = await import('/src/gs.js');
       flareOnce(document.querySelector('#row-list gs-row[status="deny"]'));
