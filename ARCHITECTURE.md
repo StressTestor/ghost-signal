@@ -195,8 +195,14 @@ or `gallery/`.
   cuts them back, and the rows below slide the wrong way. cause: the scroller clamps `scrollTop`
   when the document shrinks, and a sliding collapse keeps the overflow up (the out of flow
   `data-leaving` clip, the `fill: 'forwards'` follower moves) until the drawer lets go, so it clamps
-  twice. fix: `toggle()` reads the nearest scroller's room first and cuts any collapse the scroller
-  would clamp, the same single cut reduced motion makes.
+  twice. predicting the clamp from one box's room misses: a wrapper with `overflow-x: hidden` or
+  `overflow: hidden` computes to a scroll container that never scrolls, and a fixed-height scroller
+  keeps its height so the page above it never clamps. fix: `toggle()` records `scrollTop` on the
+  document's scroller and every ancestor whose `overflow-y` isn't `visible` or `clip`, flips
+  `aria-expanded` with the clip at `display: none`, reads them again (the read forces the layout
+  that clamps), and cuts if any of them moved back, the same single cut reduced motion makes.
+  scroll anchoring moving `scrollTop` for a row shut above the anchor reads the same way and cuts
+  too, which holds the rows on screen still.
 - problem: a drawer e2e test goes red locally under load but passes on ci. cause: a wall clock
   wait (`setTimeout`, `waitForTimeout`) in a starved renderer can land before a move has started
   or after it has finished. fix: drive the scenario off the moves' own clock (`currentTime`, a rAF

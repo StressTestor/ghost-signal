@@ -353,39 +353,151 @@ test.describe('drawer motion', () => {
   // at the bottom of the page a collapse shrinks the document under the scroller, which clamps
   // scrollTop and moves every row at once. a slide there clamps twice (at the flip, and again when
   // the out of flow clip and the held follower moves let go), so it has to be the one cut reduced
-  // motion makes
-  test('a collapse at the bottom of the scroll is one cut, the same as reduced motion', async ({ page }) => {
+  // motion makes. a wrapper whose overflow-y computes to anything but visible is a scroll container
+  // that never scrolls (overflow-x: hidden turns overflow-y to auto; a rounded card clips with
+  // overflow: hidden), and the document still clamps through it
+  for (const wrapper of ['', 'overflow-x: hidden', 'overflow: hidden']) {
+    const inside = wrapper === '' ? '' : ` (rows in a main with ${wrapper})`;
+    test(`a collapse at the bottom of the scroll is one cut, the same as reduced motion${inside}`, async ({ page }) => {
+      const r = await page.evaluate(async (wrapper) => {
+        const { frame, settle } = window.drawerClock;
+        const lines = Array.from({ length: 6 }, (_, i) => `line ${i + 1} of the detail`).join('\n');
+        for (let i = 12; i < 42; i++) {
+          const row = document.createElement('gs-row');
+          row.id = `r${i}`;
+          row.setAttribute('status', 'ok');
+          row.setAttribute('label', `row ${i}`);
+          row.append(lines);
+          document.body.append(row);
+        }
+        if (wrapper !== '') {
+          const main = document.createElement('main');
+          main.style.cssText = wrapper;
+          main.append(...document.querySelectorAll('gs-row'));
+          document.body.append(main);
+        }
+        const overflowY = getComputedStyle(document.getElementById('r39').parentElement).overflowY;
+        const row = document.getElementById('r39');
+        const t = (id) => document.getElementById(id).getBoundingClientRect().top;
+        row.toggle(true);
+        await settle();
+        scrollTo(0, document.documentElement.scrollHeight);
+        await frame();
+        await frame();
+        const scrolled = scrollY;
+        row.toggle(false);
+        await frame();
+        const first = { r38: t('r38'), r40: t('r40') };
+        await settle();
+        const settled = { r38: t('r38'), r40: t('r40') };
+        return { overflowY, scrolled, clamped: scrolled - scrollY, first, settled, expanded: row.expanded };
+      }, wrapper);
+      // the scenario has to reach the clamp, or a still page passes on nothing; and the wrapper has
+      // to really be a scroll container, or it tests the plain page twice
+      expect(r.overflowY).toBe(wrapper === '' ? 'visible' : wrapper === 'overflow-x: hidden' ? 'auto' : 'hidden');
+      expect(r.scrolled).toBeGreaterThan(0);
+      expect(r.clamped).toBeGreaterThan(0);
+      expect(r.expanded).toBe(false);
+      expect(Math.abs(r.first.r38 - r.settled.r38)).toBeLessThan(1);
+      expect(Math.abs(r.first.r40 - r.settled.r40)).toBeLessThan(1);
+    });
+  }
+
+  // the clamp can be in any scroller between the row and the page: a fixed-height one at its own
+  // bottom clamps while the page above it has room to spare
+  test('a collapse at the bottom of a nested scroller is one cut too', async ({ page }) => {
     const r = await page.evaluate(async () => {
       const { frame, settle } = window.drawerClock;
       const lines = Array.from({ length: 6 }, (_, i) => `line ${i + 1} of the detail`).join('\n');
+      const box = document.createElement('div');
+      box.style.cssText = 'height: 400px; overflow-y: auto;';
+      box.append(...document.querySelectorAll('gs-row'));
       for (let i = 12; i < 42; i++) {
         const row = document.createElement('gs-row');
         row.id = `r${i}`;
         row.setAttribute('status', 'ok');
         row.setAttribute('label', `row ${i}`);
         row.append(lines);
-        document.body.append(row);
+        box.append(row);
       }
+      const spacer = document.createElement('div');
+      spacer.style.height = '1500px';
+      document.body.append(box, spacer);
       const row = document.getElementById('r39');
       const t = (id) => document.getElementById(id).getBoundingClientRect().top;
       row.toggle(true);
       await settle();
-      scrollTo(0, document.documentElement.scrollHeight);
+      box.scrollTop = box.scrollHeight;
       await frame();
       await frame();
-      const scrolled = scrollY;
+      const inner = box.scrollTop;
+      const room = document.documentElement.scrollHeight - innerHeight - scrollY;
+      const h = row.querySelector('[part="clip"]').offsetHeight;
       row.toggle(false);
       await frame();
       const first = { r38: t('r38'), r40: t('r40') };
       await settle();
       const settled = { r38: t('r38'), r40: t('r40') };
-      return { scrolled, clamped: scrolled - scrollY, first, settled, expanded: row.expanded };
+      return { inner, clamped: inner - box.scrollTop, room, h, first, settled };
     });
-    // the scenario has to reach the clamp, or a still page passes on nothing
-    expect(r.scrolled).toBeGreaterThan(0);
+    // the scroller clamped and the page had room: only the nested box can call the cut
+    expect(r.inner).toBeGreaterThan(0);
     expect(r.clamped).toBeGreaterThan(0);
-    expect(r.expanded).toBe(false);
+    expect(r.room).toBeGreaterThan(r.h);
     expect(Math.abs(r.first.r38 - r.settled.r38)).toBeLessThan(1);
     expect(Math.abs(r.first.r40 - r.settled.r40)).toBeLessThan(1);
+  });
+
+  // the other side of the clamp: a fixed-height scroller with room keeps its own height when a row
+  // inside it collapses, so the document never shrinks and nothing clamps, even with the page at its
+  // bottom. predicting the clamp from the page's room would cut this; it has to slide
+  test('a collapse inside a scroller with room still slides with the page at its bottom', async ({ page }) => {
+    const r = await page.evaluate(async () => {
+      const { frame, settle } = window.drawerClock;
+      const lines = Array.from({ length: 6 }, (_, i) => `line ${i + 1} of the detail`).join('\n');
+      const spacer = document.createElement('div');
+      spacer.style.height = '1500px';
+      const box = document.createElement('div');
+      box.style.cssText = 'height: 400px; overflow-y: auto;';
+      box.append(...document.querySelectorAll('gs-row'));
+      for (let i = 12; i < 42; i++) {
+        const row = document.createElement('gs-row');
+        row.id = `r${i}`;
+        row.setAttribute('status', 'ok');
+        row.setAttribute('label', `row ${i}`);
+        row.append(lines);
+        box.append(row);
+      }
+      document.body.append(spacer, box);
+      const row = document.getElementById('r20');
+      const t = (id) => document.getElementById(id).getBoundingClientRect().top;
+      row.toggle(true);
+      await settle();
+      box.scrollTop = row.offsetTop - box.offsetTop;
+      scrollTo(0, document.documentElement.scrollHeight);
+      await frame();
+      await frame();
+      const page = { y: scrollY, room: document.documentElement.scrollHeight - innerHeight - scrollY };
+      const inner = { y: box.scrollTop, room: box.scrollHeight - box.clientHeight - box.scrollTop };
+      const h = row.querySelector('[part="clip"]').offsetHeight;
+      const before = t('r21');
+      row.toggle(false);
+      const follower = document.getElementById('r21').getAnimations().map((a) => a.id);
+      await frame();
+      const first = t('r21');
+      await settle();
+      return { page, inner, h, before, first, settled: t('r21'), pageAfter: scrollY, innerAfter: box.scrollTop, follower };
+    });
+    // the page sits at its bottom and the scroller has more room than the drawer is tall
+    expect(r.page.y).toBeGreaterThan(0);
+    expect(r.page.room).toBeLessThan(1);
+    expect(r.inner.y).toBeGreaterThan(0);
+    expect(r.inner.room).toBeGreaterThan(r.h);
+    expect(r.pageAfter).toBe(r.page.y);
+    expect(r.innerAfter).toBe(r.inner.y);
+    expect(r.follower).toEqual(['gs-move:drawer']);
+    // r21 climbs the drawer's height, and on the first frame it is still on its way
+    expect(r.before - r.settled).toBeCloseTo(r.h, 0);
+    expect(r.first).toBeGreaterThan(r.settled + 1);
   });
 });

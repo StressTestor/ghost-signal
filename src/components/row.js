@@ -22,20 +22,17 @@ function visibleFollowers(row, extra = 0) {
   return out;
 }
 
-// how far a collapse would pull the nearest scroller's scrollTop back. a scroller already at its
-// bottom clamps when the document shrinks under it, and every row moves at once whether it slides
-// or not. any overflow but visible or clip scrolls; body and html hand theirs to the viewport
-function scrollClamp(row, height) {
-  let box = document.scrollingElement ?? document.documentElement;
+// the document's scroller and every ancestor that is a scroll container. overflow-y anything but
+// visible or clip makes one, even a wrapper that never scrolls (overflow-x: hidden computes it to
+// auto), so which of them clamps is measured after the flip, never predicted from one box's room:
+// a fixed-height scroller keeps its height when a row in it shuts, and the page above it never moves
+function scrollers(row) {
+  const out = [document.scrollingElement ?? document.documentElement];
   for (let el = row.parentElement; el !== null && el !== document.body && el !== document.documentElement; el = el.parentElement) {
     const y = getComputedStyle(el).overflowY;
-    if (y !== 'visible' && y !== 'clip') {
-      box = el;
-      break;
-    }
+    if (y !== 'visible' && y !== 'clip') out.push(el);
   }
-  const room = box.scrollHeight - box.clientHeight - box.scrollTop;
-  return Math.min(box.scrollTop, Math.max(0, height - room));
+  return out;
 }
 
 export class GsRow extends Base {
@@ -122,14 +119,23 @@ export class GsRow extends Base {
     const open = force ?? this.expanded === false;
     const changed = open !== this.expanded;
     // measured before the layout flips: the rows below start where they are on screen. closing, the
-    // clip is still in flow here, so its offsetHeight is the height the rows below are about to climb.
-    // a collapse the scroller clamps is a cut: the out of flow clip and the held follower moves keep
-    // the overflow up until they let go, so a slide there clamps twice and drags the rows above along >:[
-    const moving = changed && motionAllowed() && (open || scrollClamp(this, this.#clip.offsetHeight) < 0.5);
+    // clip is still in flow here, so its offsetHeight is the height the rows below are about to climb
+    const moving = changed && motionAllowed();
     const followers = moving ? visibleFollowers(this, open ? 0 : this.#clip.offsetHeight) : [];
+    const boxes = moving && open === false ? scrollers(this) : [];
+    const tops = boxes.map((box) => box.scrollTop);
+    if (boxes.length > 0) this.#clip.removeAttribute('data-leaving');
     this.#head.setAttribute('aria-expanded', String(open));
+    // the clip is display: none now, and reading scrollTop lays that out: any scroller the collapse
+    // clamps has already jumped, every row with it. a slide from there clamps twice (the out of flow
+    // clip and the held follower moves keep the overflow up until they let go) and drags the rows
+    // above along >:[ so a clamp is the one cut reduced motion makes. scroll anchoring pulls
+    // scrollTop back the same way when the shut row sits above the anchor, and there the rows on
+    // screen already hold still, so that's a cut too. read before the event, so a listener that
+    // scrolls can't pass for a clamp. don't hoist this above the flip, it's the point
+    const clamped = boxes.some((box, i) => box.scrollTop < tops[i] - 0.5);
     this.dispatchEvent(new CustomEvent('gs-row-toggle', { bubbles: true, detail: { open } }));
-    if (moving) this.#move(open, followers);
+    if (moving && clamped === false) this.#move(open, followers);
     else if (changed) this.#cut();
     return open;
   }
