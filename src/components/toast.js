@@ -3,6 +3,7 @@
 // rides in a [part="slot"] pinned to a zero-height anchor, and its stack place is a translateY, so
 // an arrival never moves anything by layout and can't register as a layout shift (spec p7, p10) 👻
 import { coerceStatus, glitchOnce, moshOnce } from '../gs.js';
+import { enter, exit, motionAllowed } from '../motion.js';
 import './decode.js';
 
 const Base = globalThis.HTMLElement ?? class {};
@@ -59,9 +60,14 @@ export class GsToast extends Base {
   }
 
   #dismiss(slot) {
+    if (slot.hasAttribute('data-leaving')) return;
     this.#ro?.unobserve(slot);
-    slot.remove();
-    this.#restack();
+    // out of #slots from here on, so no restack places it again. its remove, after the exit, restacks the rest
+    slot.setAttribute('data-leaving', '');
+    exit(slot, { to: 'right', distance: 'toast' }).then(() => {
+      slot.remove();
+      this.#restack();
+    });
   }
 
   toast({ status = 'idle', text = '', kaomoji = '' } = {}) {
@@ -108,6 +114,14 @@ export class GsToast extends Base {
     this.append(slot);
     this.#ro?.observe(slot);
     this.#restack();
+    if (motionAllowed()) {
+      // the enter owns the slot's transform until it lands; only then does the stack write to it
+      slot.setAttribute('data-entering', '');
+      enter(slot, { from: 'right', distance: 'toast' }).then(() => {
+        slot.removeAttribute('data-entering');
+        if (slot.isConnected) this.#restack();
+      });
+    }
     // fx play on the item, never the slot: the slot's transform is its stack place (one carrier)
     if (s === 'bypass') glitchOnce(item);
     if (s === 'crash') moshOnce(item);

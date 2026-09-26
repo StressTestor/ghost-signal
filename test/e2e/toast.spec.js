@@ -48,10 +48,17 @@ async function expectLiveProbe(page) {
   expect(live.control.length).toBeGreaterThan(0);
 }
 
-// slot boxes oldest first, read after two frames so a resize has laid out and restacked
+// slot boxes oldest first. two frames so a resize has laid out and the observer restacked, then
+// until every slot has landed: with motion.css the restack eases and an arrival slides in, and a box
+// read mid-flight overlaps its neighbour on nothing but timing. own animations only, so a decode or
+// a glitch on the item can't hold the wait open
 async function slotRects(page) {
   return page.evaluate(async () => {
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await frame();
+    const slots = () => [...document.querySelectorAll('#toasts > [part="slot"]')];
+    const moving = () => slots().some((s) => s.hasAttribute('data-entering') || s.getAnimations().length > 0);
+    for (let i = 0; i < 120 && moving(); i++) await frame();
     return [...document.querySelectorAll('#toasts > [part="slot"]')].map((s) => {
       const b = s.getBoundingClientRect();
       return { top: b.top, bottom: b.bottom, height: b.height };
@@ -118,7 +125,13 @@ test('sticky toasts that rewrap on a narrower viewport never overlap', async ({ 
   expectNoOverlap(narrow);
 });
 
+// the cut path on purpose: with motion.css each enter restacks the stack when it lands, heights and
+// all, and that alone passes this test with the observer and the reconnect restack both gone XX
 test('toasts added while the anchor is hidden or detached restack once it renders', async ({ page }) => {
+  await page.evaluate(async () => {
+    document.querySelector('link[href$="motion.css"]').remove();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
   await page.evaluate(() => {
     const toasts = document.getElementById('toasts');
     toasts.style.display = 'none';
@@ -168,4 +181,43 @@ test('the anchor has no height and every slot is pinned to its bottom right', as
     return { height: toasts.getBoundingClientRect().height, position: getComputedStyle(slot).position, bottom: getComputedStyle(slot).bottom };
   });
   expect(r).toEqual({ height: 0, position: 'absolute', bottom: '0px' });
+});
+
+test('a bypass toast glitches its item and never its slot; the slot only slides in', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    const item = document.getElementById('toasts').toast({ status: 'bypass', text: 'something got through' });
+    const slot = item.parentElement;
+    return {
+      slot: slot.getAnimations().map((a) => a.id),
+      item: item.getAnimations().map((a) => a.animationName),
+      from: slot.getAnimations()[0]?.effect.getKeyframes()[0].transform,
+    };
+  });
+  expect(r.slot).toEqual(['gs-move:enter']);
+  expect(r.item).toEqual(['gs-event-glitch-shift']);
+  expect(r.from).toBe('translate(24px, 0px)');
+});
+
+test('dismissing the newest slides it out, removes it, then the older slot closes the gap', async ({ page }) => {
+  await page.evaluate(() => {
+    const t = document.getElementById('toasts');
+    t.toast({ status: 'deny', text: 'one' });
+    t.toast({ status: 'deny', text: 'two' });
+  });
+  // the first slot restacks only after its own 167ms enter, then eases 200ms: let both finish
+  await page.waitForTimeout(700);
+  // the newest sits at the bottom at translateY(0px) the whole time, so dismissing it is the case
+  // where something has to move: the older slot, from above, down to 0
+  const r = await page.evaluate(() => {
+    const [older, newest] = document.querySelectorAll('#toasts [part="slot"]');
+    const before = older.style.transform;
+    newest.querySelector('[part="ok"]').click();
+    return { before, ids: newest.getAnimations().map((a) => a.id), leaving: newest.hasAttribute('data-leaving') };
+  });
+  expect(r.before).not.toBe('translateY(0px)');
+  expect({ ids: r.ids, leaving: r.leaving }).toEqual({ ids: ['gs-move:exit'], leaving: true });
+  await expect(page.locator('#toasts [part="slot"]')).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => document.querySelector('#toasts [part="slot"]').style.transform)).toBe('translateY(0px)');
+  // and it got there on screen, not only in its style attribute
+  await expect.poll(() => page.evaluate(() => new DOMMatrixReadOnly(getComputedStyle(document.querySelector('#toasts [part="slot"]')).transform).m42)).toBe(0);
 });
