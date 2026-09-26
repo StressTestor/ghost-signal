@@ -134,3 +134,70 @@ test.describe('reduced motion', () => {
     expect(flared).toBe(false);
   });
 });
+
+test.describe('drawer motion', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/test/e2e/pages/drawer.html');
+    await page.waitForFunction(() => window.ready === true);
+  });
+
+  test('a drawer opened with no input records no layout shift: the rows below move by transform', async ({ page }) => {
+    const r = await page.evaluate(async () => {
+      const t0 = performance.now();
+      const shifts = [];
+      new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.startTime > t0) shifts.push(e.value); }).observe({ type: 'layout-shift', buffered: true });
+      const row = document.getElementById('r1');
+      row.toggle(true);
+      const follower = document.getElementById('r2').getAnimations().map((a) => a.id);
+      await new Promise((res) => setTimeout(res, 400));
+      return { shifts, follower, expanded: row.expanded };
+    });
+    expect(r.follower).toEqual(['gs-move:drawer']);
+    expect(r.expanded).toBe(true);
+    expect(r.shifts).toEqual([]);
+  });
+
+  test('toggling 60ms into an opening reverses from where the rows are, with no jump', async ({ page }) => {
+    const r = await page.evaluate(async () => {
+      const row = document.getElementById('r1');
+      const next = document.getElementById('r2');
+      const top = () => next.getBoundingClientRect().top;
+      const series = (ms, during) => new Promise((resolve) => {
+        const out = [];
+        const t0 = performance.now();
+        during();
+        const f = () => {
+          out.push(top());
+          if (performance.now() - t0 < ms) requestAnimationFrame(f);
+          else resolve(out);
+        };
+        requestAnimationFrame(f);
+      });
+      const fresh = await series(350, () => row.toggle(true));
+      await series(350, () => row.toggle(false));
+      const base = top();
+      const turned = await series(450, () => {
+        row.toggle(true);
+        setTimeout(() => row.toggle(false), 60);
+      });
+      return { fresh, turned, base };
+    });
+    const steps = (xs) => xs.slice(1).map((v, i) => Math.abs(v - xs[i]));
+    expect(Math.max(...steps(r.turned))).toBeLessThanOrEqual(Math.max(...steps(r.fresh)) + 2);
+    expect(r.turned.at(-1)).toBeCloseTo(r.base, 0);
+  });
+
+  test('collapsing keeps the clip out of flow until the drawer is shut, then hides it', async ({ page }) => {
+    await page.evaluate(() => document.getElementById('r1').toggle(true));
+    await page.waitForTimeout(300);
+    const during = await page.evaluate(() => {
+      const row = document.getElementById('r1');
+      row.toggle(false);
+      const clip = row.querySelector('[part="clip"]');
+      return { leaving: clip.hasAttribute('data-leaving'), position: getComputedStyle(clip).position, expanded: row.expanded };
+    });
+    expect(during).toEqual({ leaving: true, position: 'absolute', expanded: false });
+    await expect(page.locator('#r1 [part="detail"]')).toBeHidden();
+    expect(await page.locator('#r1 [part="clip"]').evaluate((el) => el.hasAttribute('data-leaving'))).toBe(false);
+  });
+});

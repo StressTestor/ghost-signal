@@ -1,10 +1,23 @@
 // timeline row: 3px status bar, sigil, label, mono command, expandable detail.
 // "loose" is a row status only (a hook that never reported back), not a face status
 import { coerceStatus, flareOnce, glitchLevel } from '../gs.js';
+import { drawer, motionAllowed } from '../motion.js';
 import './decode.js';
 
 const Base = globalThis.HTMLElement ?? class {};
 const LOOSE_SIGIL = '◌';
+
+// the rows after this one that are on screen now. rows below the fold move as a cut: nobody sees them
+function visibleFollowers(row) {
+  const out = [];
+  const bottom = window.innerHeight;
+  for (let el = row.nextElementSibling; el !== null; el = el.nextElementSibling) {
+    const r = el.getBoundingClientRect();
+    if (r.top > bottom) break;
+    if (r.bottom >= 0) out.push(el);
+  }
+  return out;
+}
 
 export class GsRow extends Base {
   static observedAttributes = ['status', 'label', 'command', 'sigil'];
@@ -14,6 +27,8 @@ export class GsRow extends Base {
   #label = null;
   #command = null;
   #detail = null;
+  #clip = null;
+  #drawer = drawer();
 
   connectedCallback() {
     if (this.#head === null) this.#build();
@@ -42,7 +57,10 @@ export class GsRow extends Base {
     this.#detail = document.createElement('div');
     this.#detail.setAttribute('part', 'detail');
     this.#detail.append(...children);
-    this.append(this.#head, this.#detail);
+    this.#clip = document.createElement('div');
+    this.#clip.setAttribute('part', 'clip');
+    this.#clip.append(this.#detail);
+    this.append(this.#head, this.#clip);
     this.#head.addEventListener('click', () => this.toggle());
     this.#head.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -83,9 +101,21 @@ export class GsRow extends Base {
 
   toggle(force) {
     const open = force ?? this.expanded === false;
+    const moving = open !== this.expanded && motionAllowed();
+    // measured before the layout flips: the rows below start where they are on screen
+    const followers = moving ? visibleFollowers(this) : [];
     this.#head.setAttribute('aria-expanded', String(open));
     this.dispatchEvent(new CustomEvent('gs-row-toggle', { bubbles: true, detail: { open } }));
+    if (moving) this.#move(open, followers);
     return open;
+  }
+
+  #move(open, followers) {
+    if (open) this.#clip.removeAttribute('data-leaving');
+    else this.#clip.setAttribute('data-leaving', '');
+    this.#drawer.play({ inner: this.#detail, followers, open, height: this.#clip.offsetHeight }).then((done) => {
+      if (done && this.expanded === false) this.#clip.removeAttribute('data-leaving');
+    });
   }
 }
 

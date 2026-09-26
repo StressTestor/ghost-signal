@@ -266,7 +266,7 @@ gs-toast [part="item"][data-status="crash"] { border-left-color: var(--gs-color-
 gs-toast [part="kaomoji"] { font-family: var(--gs-font-mono); color: var(--gs-color-text-muted); }
 gs-toast [part="ok"] { margin-left: auto; }
 
-gs-row { display: block; border-left: var(--gs-bar) solid var(--gs-color-idle); border-bottom: var(--gs-border); }
+gs-row { position: relative; display: block; border-left: var(--gs-bar) solid var(--gs-color-idle); border-bottom: var(--gs-border); }
 gs-row[status="working"] { border-left-color: var(--gs-color-working); }
 gs-row[status="ok"] { border-left-color: var(--gs-color-ok); }
 gs-row[status="warn"] { border-left-color: var(--gs-color-warn); }
@@ -286,8 +286,12 @@ gs-row [part="head"]:hover { background-color: var(--gs-color-surface); }
 gs-row [part="sigil"] { font-family: var(--gs-font-mono); color: var(--gs-color-text-muted); min-width: 1.5em; }
 gs-row [part="label"] { text-transform: lowercase; }
 gs-row [part="command"] { font-family: var(--gs-font-mono); font-size: var(--gs-size-mono); color: var(--gs-color-text-muted); }
-gs-row [part="detail"] { display: none; margin: 0 var(--gs-space-3) var(--gs-space-3) var(--gs-space-5); padding: var(--gs-space-3); background-color: var(--gs-color-raised); color: var(--gs-color-text); font-family: var(--gs-font-mono); font-size: var(--gs-size-mono); border-radius: var(--gs-radius-control); white-space: pre-wrap; }
-gs-row [part="head"][aria-expanded="true"] + [part="detail"] { display: block; }
+gs-row [part="detail"] { margin: 0 var(--gs-space-3) var(--gs-space-3) var(--gs-space-5); padding: var(--gs-space-3); background-color: var(--gs-color-raised); color: var(--gs-color-text); font-family: var(--gs-font-mono); font-size: var(--gs-size-mono); border-radius: var(--gs-radius-control); white-space: pre-wrap; }
+/* the detail rides in a clip. open, the clip is in flow; collapsing, it leaves the flow so the
+   rows below can close up by transform while the detail rolls up inside it */
+gs-row [part="clip"] { display: none; overflow: hidden; }
+gs-row [part="head"][aria-expanded="true"] + [part="clip"] { display: block; }
+gs-row [part="clip"][data-leaving] { display: block; position: absolute; inset-inline: 0; }
 
 gs-palette { display: none; position: fixed; inset: 0; z-index: 110; }
 gs-palette[open] { display: block; }
