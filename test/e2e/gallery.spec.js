@@ -381,3 +381,44 @@ test('a gallery module that never loads still reveals the page', async ({ page }
   }));
   expect(r).toEqual({ ready: false, visibility: 'visible' });
 });
+
+test('query params land the gallery at a glitch level and theme with one navigation', async ({ page }) => {
+  await page.goto('/gallery/?glitch=2&theme=light');
+  await page.waitForSelector('html[data-gallery-ready]');
+  expect(await page.evaluate(() => [document.documentElement.dataset.glitch, document.documentElement.dataset.theme])).toEqual(['2', 'light']);
+});
+
+test('the motion section: a view enters from its side, the tab indicator follows, the list has 300 rows', async ({ page }) => {
+  await open(page);
+  const r = await page.evaluate(() => {
+    window.gallery.view(2);
+    const body = document.querySelector('#motion-view .motion-view-body');
+    const a = body.getAnimations()[0];
+    const current = document.querySelector('#motion-tabs [aria-current="page"]');
+    return {
+      view: body.dataset.view,
+      id: a?.id,
+      from: a?.effect.getKeyframes()[0].transform,
+      current: current.dataset.view,
+      bar: document.querySelector('#motion-tabs [part="indicator"]') !== null,
+      rows: document.querySelectorAll('#motion-list > div:not(.motion-list-head)').length,
+      values: document.querySelectorAll('#motion-bars [data-gs-value]').length,
+    };
+  });
+  expect(r).toEqual({ view: '2', id: 'gs-move:view', from: 'translate(16px, 0px)', current: '2', bar: true, rows: 300, values: 3 });
+  await page.locator('#motion-tabs [data-view="0"]').click();
+  await expect(page.locator('#motion-view .motion-view-body')).toHaveAttribute('data-view', '0');
+});
+
+test('a toast burst from the motion section shifts nothing', async ({ page }) => {
+  await open(page);
+  const shifts = await page.evaluate(async () => {
+    const t0 = performance.now();
+    const out = [];
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.startTime > t0) out.push(e.value); }).observe({ type: 'layout-shift', buffered: true });
+    window.gallery.burst(5);
+    await new Promise((res) => setTimeout(res, 600));
+    return out;
+  });
+  expect(shifts).toEqual([]);
+});

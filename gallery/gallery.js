@@ -1,6 +1,6 @@
 // the by-eye surface. renders every component in every status, wires the theme and glitch
 // switches, mounts the probe app through the plug-in contract and nothing else (｡◕‿↼)
-import { GS, STATUSES, registerCommands, registerSprite, injectIcons, listIcons, startAmbient } from '../src/gs.js';
+import { GS, STATUSES, registerCommands, registerSprite, injectIcons, listIcons, startAmbient, reducedMotion } from '../src/gs.js';
 import { KAOMOJI } from '../src/expressions.js';
 import { copy } from '../src/copy.js';
 import '../src/components/mosaic.js';
@@ -14,8 +14,14 @@ import '../src/components/empty.js';
 import '../src/components/error.js';
 import '../src/components/splash.js';
 import '../src/components/palette.js';
+import { enter, enterView, flip, indicator } from '../src/motion.js';
 
 const html = document.documentElement;
+// ?glitch=0|1|2&theme=dark|light lands a feel setup in a known state with one navigation. reduced
+// motion wins over the glitch param: gs.js already forced glitch 0 on import
+const params = new URLSearchParams(location.search);
+if (['dark', 'light'].includes(params.get('theme'))) html.dataset.theme = params.get('theme');
+if (['0', '1', '2'].includes(params.get('glitch')) && reducedMotion() === false) html.dataset.glitch = params.get('glitch');
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, attrs = {}, text = '') => {
   const node = document.createElement(tag);
@@ -54,6 +60,10 @@ window.gallery = {
     stopAmbient = startAmbient(options);
     return stopAmbient;
   },
+  view(n) { showView(n); },
+  burst(n = 5) { burst(n); },
+  shuffle() { shuffle(); },
+  newValues() { newValues(); },
 };
 
 // icons: gs.js registered the core twenty on import; injectIcons writes the sprite they draw from
@@ -110,6 +120,60 @@ function wireChrome() {
   });
 }
 
+const VIEWS = [
+  ['one', 'overview. every change of place eases on the compositor'],
+  ['two', 'timeline. rows slide, drawers unroll, the stack restacks'],
+  ['three', 'settings. the press is a cut, the answer is a frame away'],
+];
+let view = 0;
+
+// the incoming view enters from its tab's side, the outgoing one cuts (spec 4.1)
+function showView(next) {
+  const body = el('div', { class: 'motion-view-body', 'data-view': String(next) });
+  body.append(el('h3', {}, `view ${VIEWS[next][0]}`), el('p', {}, VIEWS[next][1]));
+  $('#motion-view').replaceChildren(body);
+  for (const b of document.querySelectorAll('#motion-tabs [data-view]')) {
+    if (Number(b.dataset.view) === next) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  }
+  if (next !== view) enterView(body, next > view ? 'right' : 'left');
+  view = next;
+}
+
+let rowsOnTop = 0;
+function shuffle() {
+  const list = $('#motion-flip');
+  rowsOnTop += 1;
+  const row = el('div', {}, `row ${rowsOnTop} lands on top`);
+  flip([...list.children], () => {
+    list.prepend(row);
+    while (list.children.length > 6) list.lastElementChild.remove();
+  });
+  enter(row, { from: 'above' });
+}
+
+function newValues() {
+  for (const bar of document.querySelectorAll('#motion-bars [data-gs-value]')) bar.style.setProperty('--v', String(Math.round(GS.random() * 90 + 10) / 100));
+}
+
+function burst(n = 5) {
+  const statuses = ['ok', 'working', 'ok', 'warn', 'ok'];
+  for (let i = 0; i < n; i++) {
+    document.dispatchEvent(new CustomEvent('gs-toast', { detail: { status: statuses[i % statuses.length], text: `burst ${i + 1} of ${n}` } }));
+  }
+}
+
+function renderMotion() {
+  for (let i = 0; i < 6; i++) $('#motion-flip').append(el('div', {}, `row ${i}`));
+  for (let i = 0; i < 300; i++) $('#motion-list').append(el('div', {}, `${String(i).padStart(3, '0')}  cargo test --workspace  ok`));
+  showView(0);
+  indicator($('#motion-tabs'));
+  for (const b of document.querySelectorAll('#motion-tabs [data-view]')) b.addEventListener('click', () => showView(Number(b.dataset.view)));
+  $('#toast-burst').addEventListener('click', () => burst(5));
+  $('#motion-shuffle').addEventListener('click', shuffle);
+  $('#motion-bars-new').addEventListener('click', newValues);
+}
+
 // the plug-in contract, end to end: manifest, flavor css, flavor js, commands, status event
 async function mountProbe() {
   const app = await (await fetch('./apps/probe/app.json')).json();
@@ -145,6 +209,7 @@ async function mountProbe() {
 renderStatuses();
 wireChrome();
 renderIcons();
+renderMotion();
 registerSprite('checks', ['#...', '.#..', '..#.', '...#']);
 // wallpaper is imported last, after its sprites exist: defining the element upgrades the two
 // static wallpapers in index.html on the spot, and an unregistered sprite name throws. "ghost"
