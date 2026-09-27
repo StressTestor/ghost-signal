@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # copies a tagged ghost-signal release into a consumer that has no bundler.
-# usage: DEST=vendor/ghost-signal scripts/sync-ghost-signal.sh v0.1.0
+# usage: DEST=vendor/ghost-signal scripts/sync-ghost-signal.sh v0.2.0
 # result: $DEST/src $DEST/gen $DEST/schema $DEST/tokens.json and $DEST/VERSION holding the tag.
 # drift is a grep on VERSION. tokens.json rides along because src/feel reads its budgets from it
 set -euo pipefail

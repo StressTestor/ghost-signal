@@ -1,6 +1,6 @@
 {
   "name": "ghost-signal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "design system for joe's guis: tokens, css, web components, plug-in contract",
   "type": "module",
   "license": "MIT",
