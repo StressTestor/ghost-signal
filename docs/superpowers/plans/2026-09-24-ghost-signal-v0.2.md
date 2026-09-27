@@ -93,6 +93,8 @@ recommendation: c1 for 0.2.0, with option a as its own follow-up. c1 keeps joe's
 
 toast burst: 4.1 wins over 6.6. a burst of toasts restacks as it arrives with no pile-up on the anchor: `toast()` defers the restack and each enter to one microtask flush, an entering slot takes its place under `data-gs-still` and a fresh `enter()`, and `toast.spec.js:229` became a per-frame no-overlap burst check. spec 6.6 is amended to match.
 
+**task 23 paused again, 2026-09-27.** the harness half of c1 landed (`b842f05`), the gallery half didn't. with the prepared fixes applied and the six flip steps exempt and pooled by name as described above, `gallery.feel.js` went green in 1 of 6 runs on the m5. flip frames swing per entry and per session between 6 to 13ms and 15 to 21ms, and many land at 15 to 17ms, right on the budget, so in most runs at least one flip name never goes over in any entry and its exemption fails. the b96b242 tree task 23 measured at 17 to 22ms on 09-26 read 5.5 to 15ms on 09-27, so the cost moves with the machine session, not the code. `nice` isn't the switch. one exemption shared by every flip step would have held 4 of 6, still short of green. the scenario and the applied prepared fixes are parked under `.superpowers/sdd/2026-09-24-ghost-signal-v0.2/finish/` (`gallery.feel.c1.parked.js`, `prepared-fixes-applied.patch`, the numbers in `flip-table.txt`). the plan's own escape, dropping `FLIP` from a step that fit, fails the first slow session. the "used" rule goes back to joe; task 24 waits on it.
+
 ```mermaid
 flowchart LR
   d1{{"d1: joe's call"}}
