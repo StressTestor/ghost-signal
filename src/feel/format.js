@@ -110,7 +110,9 @@ export function formatReport(r) {
     ? 'exemptions: none'
     : `exemptions: ${r.exemptions.map((e) => `${e.kind} ${e.target} (${e.why})${e.used ? '' : e.usedIn ? `, used in ${e.usedIn.join(', ')}` : ', unused'}`).join('; ')}`);
   // what a frame exemption covered: the frames still print, so the hitch stays in every report
-  if ((r.exempted ?? []).length > 0) out.push(`exempted: ${r.exempted.map((x) => `step ${x.step.index} ${x.check} ${f1(Math.max(...x.values.map((v) => v.value)))}ms (${runValues(x)})`).join('; ')}`);
+  if ((r.exempted ?? []).length > 0) out.push(`exempted: ${r.exempted.map((x) => `step ${x.step.index} ${x.check} ${f1(Math.max(...x.values.map((v) => v.value)))}ms (${runValues(x)}), ceiling ${f1(x.ceiling)}`).join('; ')}`);
+  // an unused frame exemption passes, and says so on every report it rides
+  for (const n of r.notices ?? []) out.push(`notice: ${n.text}`);
   const total = r.runs[0]?.steps.length ?? 0;
   const failedSteps = [...groups.keys()].filter((k) => k.startsWith('#')).length;
   const animations = r.runs[0]?.seen.animations ?? 0;

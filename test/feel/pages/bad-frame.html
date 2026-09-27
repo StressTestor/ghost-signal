@@ -9,12 +9,13 @@
   <p id="status">idle</p>
   <script>
     // planted: a rAF callback burning 30ms, ten frames running. 30 is under the 50ms task budget,
-    // so only the frame check may fire
-    window.burnFrames = (n) => new Promise((resolve) => {
+    // so only the frame check may fire. the frame exemption's ceiling control burns 42ms: over two
+    // vsync intervals, still under the task budget
+    window.burnFrames = (n, ms = 30) => new Promise((resolve) => {
       let left = n;
       requestAnimationFrame(function burn() {
         const t = performance.now();
-        while (performance.now() - t < 30) left += 0;
+        while (performance.now() - t < ms) left += 0;
         document.getElementById('status').textContent = `burned ${n - left + 1}`;
         left -= 1;
         if (left > 0) requestAnimationFrame(burn);

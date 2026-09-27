@@ -48,7 +48,7 @@ test('a passing strict report prints its exemptions and nothing else', () => {
   const report = {
     ...base, runsPlanned: 1, runsDone: 1, result: 'pass', violations: [], unconfirmed: [], stalls: [],
     exemptions: [{ kind: 'shift', target: '#feed', why: 'the feed grows by design', used: true }],
-    exempted: [{ check: 'frame', step: { index: 1, name: 'theme light', kind: 'input', inputType: 'click' }, limit: 16.7, values: [{ run: 1, value: 21.4 }], why: 'a whole-page flip' }],
+    exempted: [{ check: 'frame', step: { index: 1, name: 'theme light', kind: 'input', inputType: 'click' }, limit: 16.7, ceiling: 33.4, values: [{ run: 1, value: 21.4 }], why: 'a whole-page flip' }],
     runs: [{ index: 1, steps: [{ index: 0 }, { index: 1 }, { index: 2 }], seen: { animations: 3 }, info: [] }],
   };
   assert.equal(formatReport(report), [
@@ -58,7 +58,7 @@ test('a passing strict report prints its exemptions and nothing else', () => {
     'unconfirmed: none',
     'stalls: none',
     'exemptions: shift #feed (the feed grows by design)',
-    'exempted: step 1 frame 21.4ms (run 1 21.4)',
+    'exempted: step 1 frame 21.4ms (run 1 21.4), ceiling 33.4',
     'passed: 3 steps. 3 animations, all transform or opacity, all composited',
     '',
   ].join('\n'));
@@ -130,4 +130,17 @@ test('a frame exemption another matrix entry used says where, instead of unused'
     runs: [{ index: 1, steps: [{ index: 0 }], seen: { animations: 0 }, info: [] }],
   };
   assert.match(formatReport(report), /^exemptions: frame step 18 "theme light" \(a whole-page flip\), used in g2-dark, g1-light$/m);
+});
+
+test('an unused frame exemption prints as a notice on a passing report', () => {
+  const report = {
+    ...base, runsPlanned: 1, runsDone: 1, result: 'pass', violations: [], unconfirmed: [], stalls: [],
+    exemptions: [{ kind: 'frame', target: 'step 9 "theme light"', why: 'a whole-page flip', used: false }],
+    notices: [{ kind: 'exemption-unused', step: { index: 9, name: 'theme light', kind: 'input', inputType: 'click' }, target: 'step 9 "theme light"', text: "exemption on 'theme light' unused this run; the flip fit the budget" }],
+    runs: [{ index: 1, steps: [{ index: 0 }], seen: { animations: 0 }, info: [] }],
+  };
+  const text = formatReport(report);
+  assert.match(text, /^feel: gallery \/ g1-dark passed\. one run, strict$/m);
+  assert.match(text, /^notice: exemption on 'theme light' unused this run; the flip fit the budget$/m);
+  assert.match(text, /^exemptions: frame step 9 "theme light" \(a whole-page flip\), unused$/m);
 });

@@ -151,6 +151,12 @@ async function attach(testInfo, report, runs) {
   for (const u of report.unconfirmed) {
     testInfo.annotations.push({ type: 'feel-unconfirmed', description: `${report.scenario} / ${report.matrix}: step ${u.step.index} "${u.step.name}" ${u.check} ${u.values.map((v) => `run ${v.run} ${v.value}`).join(', ')} (limit ${u.limit})` });
   }
+  for (const n of report.notices ?? []) {
+    testInfo.annotations.push({ type: 'feel-notice', description: `${report.scenario} / ${report.matrix}: ${n.text}` });
+  }
+  if ((report.notices ?? []).length > 0 && process.env.GITHUB_STEP_SUMMARY) {
+    await appendFile(process.env.GITHUB_STEP_SUMMARY, `### feel notice: ${report.scenario} / ${report.matrix}\n\n${report.notices.map((n) => `- ${n.text}`).join('\n')}\n\n`);
+  }
   if (report.unconfirmed.length > 0 && process.env.GITHUB_STEP_SUMMARY) {
     const lines = report.unconfirmed.map((u) => `- step ${u.step.index} "${u.step.name}" ${u.check}: ${u.values.map((v) => `run ${v.run} ${v.value}`).join(', ')} (limit ${u.limit})`);
     await appendFile(process.env.GITHUB_STEP_SUMMARY, `### feel unconfirmed: ${report.scenario} / ${report.matrix}\n\n${lines.join('\n')}\n\n`);
@@ -249,9 +255,9 @@ function createFeel(page, testInfo, base) {
           throw err;
         }
       }
-      // a frame exemption is judged across the whole matrix (plan d1, joe 2026-09-27): a flip that
-      // stayed fast in one entry's runs is covered by an entry where it went over, so every entry
-      // runs before any verdict, and only then are the reports attached and judged
+      // a frame exemption is judged across the whole matrix (plan d1, 2026-09-27): a flip that stayed
+      // fast in one entry's runs says which entries needed it, so every entry runs before the
+      // reports are attached and judged
       const reports = poolFrameExemptions(done.map((d) => d.report));
       for (const [i, report] of reports.entries()) await attach(testInfo, report, done[i].runs);
       const failed = reports.filter((r) => r.result !== 'pass');

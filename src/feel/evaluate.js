@@ -236,6 +236,8 @@ export function evaluateRun(budgets, run, { mode = 'motion' } = {}) {
     stalls: out.stalls,
     info: out.info,
     used: { shifts: [...out.used.shifts], answers: [...out.used.answers] },
+    // the vsync interval the steadiness check measured: an exempt frame's ceiling is two of these
+    interval: run.steady?.interval ?? null,
     seen: { animations: run.samples.animations.length, shifts: run.samples.shifts.length, composites: run.trace.animations.length },
     // spec 7.9: the json report keeps each run's shifts, animations and answers, so a pattern across
     // runs is readable after the fact
@@ -276,16 +278,30 @@ function sameSteps(runs) {
   }
 }
 
-// with two runs that agree on every timing check, a third can't change the median (spec 8.5)
+// plan d1, decided for joe by the main session under his delegation (2026-09-27): an exempt frame
+// still fails over two vsync intervals, so the exemption covers one style recalc and never a real
+// regression. the interval is the one each run's steadiness check measured, never a literal: a
+// 120hz runner gets half the ceiling. no measured interval means no ceiling, and that's unevaluable
+export function frameCeiling(runs) {
+  const blind = runs.filter((r) => !(r.interval > 0)).map((r) => r.index);
+  if (blind.length > 0) throw new GsFeelUnevaluable(`a frame: false step needs the vsync interval its run measured for its ceiling, and run ${blind.join(', ')} has none`);
+  const sorted = runs.map((r) => r.interval).sort((a, b) => a - b);
+  return r1(2 * sorted[Math.floor((sorted.length - 1) / 2)]);
+}
+
+// with two runs that agree on every timing check, a third can't change the median (spec 8.5). an
+// exempt frame is judged against its ceiling, so only a disagreement about the ceiling buys a run
 export function needsThirdRun(budgets, runs) {
   if (runs.length !== 2) return false;
   sameSteps(runs);
   const [a, b] = runs;
+  const ceiling = a.steps.some((s) => s.frameExpected === false) ? frameCeiling(runs) : null;
   return a.steps.some((s) => {
     const t = b.steps.find((x) => x.index === s.index);
-    // an exempt frame never buys a third run: its values print either way and can't fail the step
-    return TIMING_CHECKS.some((c) => (c === 'frame' && s.frameExpected === false) === false
-      && (valueOf(s, c) > budgets[c]) !== (valueOf(t, c) > budgets[c]));
+    return TIMING_CHECKS.some((c) => {
+      const limit = c === 'frame' && s.frameExpected === false ? ceiling : budgets[c];
+      return (valueOf(s, c) > limit) !== (valueOf(t, c) > limit);
+    });
   });
 }
 
@@ -323,13 +339,23 @@ export function combineRuns(budgets, runs, meta) {
     for (const check of TIMING_CHECKS) {
       const limit = budgets[check];
       const values = runs.map((r) => ({ run: r.index, value: valueOf(r.steps.find((x) => x.index === step.index), check) }));
-      // joe's accepted hitch (plan d1): the values still go in the report, never in a violation
-      if (check === 'frame' && step.frameExpected === false) {
-        if (values.some((v) => v.value > limit)) exempted.push({ check, step: refOf(step), limit, values, why: step.why });
-        continue;
-      }
       const sorted = values.map((v) => v.value).sort((a, b) => a - b);
       const median = sorted[Math.floor((sorted.length - 1) / 2)];
+      // the accepted hitch (plan d1): the values still go in the report, and the frame is judged
+      // against the ceiling instead of the budget, by the same median rule as every timing check
+      if (check === 'frame' && step.frameExpected === false) {
+        const ceiling = frameCeiling(runs);
+        if (values.some((v) => v.value > limit)) exempted.push({ check, step: refOf(step), limit, ceiling, values, why: step.why });
+        const overCeiling = values.filter((v) => v.value > ceiling);
+        if (median > ceiling) {
+          const worst = overCeiling.reduce((x, y) => (y.value > x.value ? y : x));
+          const source = runs.find((r) => r.index === worst.run).steps.find((x) => x.index === step.index);
+          violations.push({ check, step: refOf(step), limit: ceiling, values, runs: overCeiling.map((v) => v.run), data: detailOf(source, check) });
+        } else if (overCeiling.length > 0) {
+          unconfirmed.push({ check, step: refOf(step), limit: ceiling, values });
+        }
+        continue;
+      }
       const over = values.filter((v) => v.value > limit);
       if (median > limit) {
         const worst = over.reduce((a, b) => (b.value > a.value ? b : a));
@@ -353,13 +379,17 @@ export function combineRuns(budgets, runs, meta) {
     exemptions.push({ kind: 'answer', target, why: s.why, used });
     if (used === false) violations.push({ check: 'exemption', step: refOf(s), runs: [], data: { kind: 'answer', target, why: s.why } });
   }
+  // an unused frame exemption is a notice, never a failure: the flip's cost swings per session, so
+  // a stale exemption stays visible without making the gate flaky (plan d1, 2026-09-27)
+  const notices = [];
   for (const s of runs[0].steps) {
     if (s.frameExpected !== false) continue;
     const target = `step ${s.index} "${s.name}"`;
     const used = exempted.some((x) => x.step.index === s.index);
     exemptions.push({ kind: 'frame', target, why: s.why, used });
-    if (used === false) violations.push({ check: 'exemption', step: refOf(s), runs: [], data: { kind: 'frame', target, why: s.why } });
+    if (used === false) notices.push({ kind: 'exemption-unused', step: refOf(s), target, text: `exemption on '${s.name}' unused this run; the flip fit the budget` });
   }
+
   return {
     version: REPORT_VERSION,
     scenario: meta.scenario,
@@ -374,16 +404,16 @@ export function combineRuns(budgets, runs, meta) {
     violations,
     unconfirmed,
     exempted,
+    notices,
     stalls: runs.flatMap((r) => r.stalls.map((s) => ({ ...s, run: r.index }))),
     result: violations.length > 0 ? 'fail' : 'pass',
   };
 }
 
-// plan decision d1 as joe refined it (2026-09-27): a frame exemption is used when any run of any
-// matrix entry needed it. steps line up across entries by name, since entries can walk different
-// step lists. a flip has a fast mode and a slow one, so judged per entry the ratchet would fire on a
-// lucky pass; judged over the matrix it fires only when no entry pays for the flip any more. only
-// the frame exemption's own violation is settled here, everything else stands as combineRuns left it
+// plan decision d1 (2026-09-27): a frame exemption is used when any run of any matrix entry needed
+// it, with steps lined up by name, since entries can walk different step lists. an entry whose own
+// runs stayed under says which entries needed it, and only a step no entry needed keeps its notice.
+// notices never fail anything, so the reports' results stand as combineRuns left them
 export function poolFrameExemptions(reports) {
   const usedBy = new Map();
   for (const r of reports) {
@@ -396,15 +426,15 @@ export function poolFrameExemptions(reports) {
   }
   return reports.map((r) => {
     const settled = new Map();
-    const violations = r.violations.filter((v) => {
-      if (v.check !== 'exemption' || v.data?.kind !== 'frame') return true;
-      const elsewhere = (usedBy.get(v.step.name) ?? []).filter((m) => m !== r.matrix);
+    const notices = (r.notices ?? []).filter((n) => {
+      if (n.kind !== 'exemption-unused') return true;
+      const elsewhere = (usedBy.get(n.step.name) ?? []).filter((m) => m !== r.matrix);
       if (elsewhere.length === 0) return true;
-      settled.set(v.data.target, elsewhere);
+      settled.set(n.target, elsewhere);
       return false;
     });
     if (settled.size === 0) return r;
     const exemptions = r.exemptions.map((e) => (e.kind === 'frame' && settled.has(e.target) ? { ...e, usedIn: settled.get(e.target) } : e));
-    return { ...r, exemptions, violations, result: violations.length > 0 ? 'fail' : 'pass' };
+    return { ...r, exemptions, notices };
   });
 }

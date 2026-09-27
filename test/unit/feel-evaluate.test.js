@@ -288,51 +288,77 @@ test('runs that recorded different steps are unevaluable, never a median of some
   unevaluable(() => needsThirdRun(B, rekinded.map(e)));
 });
 
-test('a frame exemption covers an over-budget frame, keeps its values, and fails when no run needed it', () => {
+// plan decision d1, decided for joe by the main session under his delegation (2026-09-27): an
+// unused frame exemption is a notice, and an exempt frame over two vsync intervals fails anyway
+const UNUSED = (name) => `exemption on '${name}' unused this run; the flip fit the budget`;
+
+test('a frame exemption covers an over-budget frame, keeps its values, and turns into a notice when no run needed it', () => {
   const flip = { kind: 'input', tasks: [{ at: 100, dur: 30 }], frameExpected: false, why: 'a whole-page flip' };
   const used = fold([build({ steps: [flip] }), build({ index: 2, steps: [flip] })]);
   assert.equal(used.result, 'pass');
   assert.deepEqual(used.exemptions, [{ kind: 'frame', target: 'step 0 "step 0"', why: 'a whole-page flip', used: true }]);
-  assert.deepEqual(used.exempted.map((x) => [x.check, x.values.map((v) => v.value)]), [['frame', [30, 30]]]);
+  assert.deepEqual(used.exempted.map((x) => [x.check, x.limit, x.ceiling, x.values.map((v) => v.value)]), [['frame', 16.7, 33.4, [30, 30]]]);
+  assert.deepEqual(used.notices, []);
   const unused = fold([build({ steps: [{ kind: 'input', frameExpected: false, why: 'a whole-page flip' }] })], { runsPlanned: 1 });
-  assert.deepEqual(checks(unused), ['exemption']);
+  assert.equal(unused.result, 'pass');
+  assert.deepEqual(checks(unused), []);
+  assert.deepEqual(unused.notices, [{ kind: 'exemption-unused', step: { index: 0, name: 'step 0', kind: 'input', inputType: 'click' }, target: 'step 0 "step 0"', text: UNUSED('step 0') }]);
+  // answer and shift exemptions keep failing when unused: only the frame one became a notice
+  const answer = fold([build({ steps: [{ kind: 'input', answerExpected: false, why: 'the press is the answer' }] })], { runsPlanned: 1 });
+  assert.deepEqual(checks(answer), ['exemption']);
 });
 
-test('an exempt frame never buys a third run, and the other timing checks still do', () => {
+test('an exempt frame over two vsync intervals fails like any frame, and the ceiling follows the measured interval', () => {
+  const over = { kind: 'input', tasks: [{ at: 100, dur: 40 }], frameExpected: false, why: 'a whole-page flip' };
+  const report = fold([build({ steps: [over] }), build({ index: 2, steps: [over] })]);
+  assert.equal(report.result, 'fail');
+  assert.deepEqual(report.violations.map((v) => [v.check, v.limit, v.values.map((x) => x.value)]), [['frame', 33.4, [40, 40]]]);
+  // still used: the report lists what it covered next to the failure
+  assert.deepEqual(report.exemptions.map((e) => e.used), [true]);
+  // a 120hz runner halves the ceiling: 20ms is over 2 x 8.3
+  const fast = (r) => ({ ...r, steady: { interval: 8.3, misses: 0 } });
+  const mid = { kind: 'input', tasks: [{ at: 100, dur: 20 }], frameExpected: false, why: 'a whole-page flip' };
+  const hz120 = fold([fast(build({ steps: [mid] })), fast(build({ index: 2, steps: [mid] }))]);
+  assert.deepEqual(hz120.violations.map((v) => [v.check, v.limit]), [['frame', 16.6]]);
+  // one run over the ceiling out of three is unconfirmed, the same median rule every timing check has
+  const one = fold([build({ steps: [over] }), build({ index: 2, steps: [mid] }), build({ index: 3, steps: [mid] })]);
+  assert.equal(one.result, 'pass');
+  assert.deepEqual(one.unconfirmed.map((u) => [u.check, u.limit]), [['frame', 33.4]]);
+  // no measured interval, no ceiling: an exempt step can't be judged
+  const blind = (r) => ({ ...r, steady: null });
+  assert.throws(() => fold([blind(build({ steps: [mid] }))], { runsPlanned: 1 }), (e) => e instanceof GsFeelUnevaluable && /interval/.test(e.message));
+});
+
+test('an exempt frame buys a third run only when the two disagree about the ceiling', () => {
   const e = (r) => evaluateRun(B, r, { mode: 'motion' });
   const exempt = { frameExpected: false, why: 'a whole-page flip' };
   assert.equal(needsThirdRun(B, [e(build({ steps: [{ ...exempt, tasks: [{ at: 100, dur: 30 }] }] })), e(build({ index: 2, steps: [exempt] }))]), false);
+  assert.equal(needsThirdRun(B, [e(build({ steps: [{ ...exempt, tasks: [{ at: 100, dur: 40 }] }] })), e(build({ index: 2, steps: [exempt] }))]), true);
   assert.equal(needsThirdRun(B, [e(build({ steps: [{ ...exempt, tasks: [{ at: 100, dur: 60 }] }] })), e(build({ index: 2, steps: [exempt] }))]), true);
 });
 
-// plan decision d1 as joe refined it on 2026-09-27: "used" is judged across the whole matrix, by
-// step name, so a flip that lands in its fast mode in one entry's runs doesn't fail that entry
-test('poolFrameExemptions: a frame exemption any matrix entry needed is used in every entry that declares it', () => {
+// the notice pools over the matrix: a step another entry needed isn't unused, it says where
+test('poolFrameExemptions: an exemption any matrix entry needed says where, and only one nobody needed stays a notice', () => {
   const why = 'a whole-page flip';
   const flip = (name, slow) => ({ name, frameExpected: false, why, ...(slow ? { tasks: [{ at: 100, dur: 30 }] } : {}) });
   const entry = (matrix, steps) => fold([build({ steps }), build({ index: 2, steps })], { matrix });
   const a = entry('g1-dark', [{}, flip('theme light', false), flip('glitch back', true)]);
   const b = entry('g2-dark', [{}, flip('theme light', true), flip('glitch back', false)]);
   // a different step list: the name lines the steps up, never the index
-  const c = entry('g1-light', [flip('theme light', false)]);
-  assert.deepEqual([a, b, c].map(checks), [['exemption'], ['exemption'], ['exemption']]);
+  const c = entry('g1-light', [flip('theme light', false), flip('theme dark', false)]);
+  assert.deepEqual([a, b, c].map((r) => r.notices.map((n) => n.step.name)), [['theme light'], ['glitch back'], ['theme light', 'theme dark']]);
   const pooled = poolFrameExemptions([a, b, c]);
   assert.deepEqual(pooled.map((r) => [r.matrix, r.result, checks(r)]), [['g1-dark', 'pass', []], ['g2-dark', 'pass', []], ['g1-light', 'pass', []]]);
   assert.deepEqual(pooled[0].exemptions, [
     { kind: 'frame', target: 'step 1 "theme light"', why, used: false, usedIn: ['g2-dark'] },
     { kind: 'frame', target: 'step 2 "glitch back"', why, used: true },
   ]);
-  assert.deepEqual(pooled[2].exemptions, [{ kind: 'frame', target: 'step 0 "theme light"', why, used: false, usedIn: ['g2-dark'] }]);
+  assert.deepEqual(pooled.map((r) => r.notices.map((n) => n.text)), [[], [], [UNUSED('theme dark')]]);
   // the reports it was handed are left alone
-  assert.deepEqual(checks(a), ['exemption']);
-  // nobody needed it: every entry that declares it still fails on it
-  const quiet = [entry('g1-dark', [flip('theme dark', false)]), entry('g2-dark', [flip('theme dark', false)])];
-  assert.deepEqual(poolFrameExemptions(quiet).map((r) => [r.result, checks(r)]), [['fail', ['exemption']], ['fail', ['exemption']]]);
-  // pooling settles frame exemptions and nothing else
+  assert.deepEqual(a.notices.length, 1);
+  // pooling settles frame notices and nothing else: a real violation and an unused answer exemption stand
   const slowTask = entry('g1-dark', [flip('theme light', false), { tasks: [{ at: 100, dur: 80 }] }]);
   assert.deepEqual(checks(poolFrameExemptions([slowTask, b])[0]), ['frame', 'task']);
-  const answer = fold([build({ steps: [{ kind: 'input', answerExpected: false, why: 'the press is the answer', answerAt: null }, flip('theme light', false)] })], { runsPlanned: 1, matrix: 'x' });
-  assert.deepEqual(checks(poolFrameExemptions([answer, b])[0]), []);
   const answerUnused = fold([build({ steps: [{ kind: 'input', answerExpected: false, why: 'the press is the answer' }] })], { runsPlanned: 1, matrix: 'x' });
   assert.deepEqual(checks(poolFrameExemptions([answerUnused, b])[0]), ['exemption']);
 });
