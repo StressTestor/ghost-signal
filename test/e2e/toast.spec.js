@@ -184,9 +184,11 @@ test('the anchor has no height and every slot is pinned to its bottom right', as
 });
 
 test('a bypass toast glitches its item and never its slot; the slot only slides in', async ({ page }) => {
-  const r = await page.evaluate(() => {
+  const r = await page.evaluate(async () => {
     const item = document.getElementById('toasts').toast({ status: 'bypass', text: 'something got through' });
     const slot = item.parentElement;
+    // the slot's enter starts in the burst's one restack, a microtask after toast() returns
+    await Promise.resolve();
     return {
       slot: slot.getAnimations().map((a) => a.id),
       item: item.getAnimations().map((a) => a.animationName),
@@ -222,44 +224,117 @@ test('dismissing the newest slides it out, removes it, then the older slot close
   await expect.poll(() => page.evaluate(() => new DOMMatrixReadOnly(getComputedStyle(document.querySelector('#toasts [part="slot"]')).transform).m42)).toBe(0);
 });
 
-// the arrival that lands on a slot still entering. the restack mustn't write that slot's offset
-// until its enter lands, or the css transition starts under the web animation, runs out hidden,
-// and the slot cuts to its place the frame the enter is cancelled. every other test here passes
-// with that guard gone, so this one watches the older slot frame by frame (¬‿¬)
-test('a slot still entering keeps offset 0 until it lands, then eases to its place', async ({ page }) => {
+// a burst restacks as it arrives (spec 4.1, and 6.6 as amended 2026-09-27): a same-task burst of
+// three takes three places on its first frame, and a second wave 60ms later moves the first one up
+// from wherever its enter has it, with no cut. a third wave 60ms after that lands while the first
+// wave's retargeted enter still runs, which is when a slot handed back to the stack too early would
+// get a transition under its enter. the pile-up this replaces parked every slot of a burst on the
+// anchor until its own enter landed, then healed by the end, so only a frame-by-frame read sees it.
+// between waves a mover crosses the newcomers' boxes on its way up; that's the restack itself, so
+// overlap is only judged inside a wave and on the places (¬‿¬)
+test('a burst restacks as it arrives: each slot takes its place at once, and a second wave moves the first from where it is', async ({ page }) => {
   const r = await page.evaluate(async () => {
     const raf = () => new Promise((resolve) => requestAnimationFrame(resolve));
     const t = document.getElementById('toasts');
-    const older = t.toast({ status: 'deny', text: 'one' }).parentElement;
-    for (let i = 0; i < 3; i++) await raf();
-    const enteringAtArrival = older.hasAttribute('data-entering');
-    t.toast({ status: 'deny', text: 'two' });
-    const y = () => new DOMMatrixReadOnly(getComputedStyle(older).transform).m42;
-    const during = [];
-    const snap = () => during.push({ transform: older.style.transform, ids: older.getAnimations().map((a) => a.id), y: y() });
-    snap();
-    for (let i = 0; i < 120 && older.hasAttribute('data-entering'); i++) {
+    const gap = parseFloat(getComputedStyle(t).getPropertyValue('--gs-space-2')) || 8;
+    const all = () => [...t.querySelectorAll(':scope > [part="slot"]')];
+    const placeOf = (s) => Number(/translateY\((-?[\d.]+)px\)/.exec(s.style.transform)?.[1]);
+    const frames = [];
+    const snap = (wave) => {
+      const anchor = t.getBoundingClientRect().bottom;
+      frames.push({
+        wave,
+        slots: all().map((s) => {
+          const anims = s.getAnimations();
+          // one transform animation per carrier: a css transition under a running enter plays out
+          // hidden, and the slot cuts to it the frame the enter is cancelled
+          const mixed = anims.some((a) => a instanceof CSSTransition) && anims.some((a) => a.id.startsWith('gs-move:'));
+          return { wave: Number(s.dataset.wave), place: placeOf(s), y: s.getBoundingClientRect().bottom - anchor, height: s.offsetHeight, entering: s.hasAttribute('data-entering'), mixed };
+        }),
+      });
+    };
+    const arrive = (n, wave) => {
+      for (let i = 0; i < n; i++) t.toast({ status: 'deny', text: `wave ${wave}, toast ${i + 1}` }).parentElement.dataset.wave = String(wave);
+    };
+    const moving = () => all().some((s) => s.hasAttribute('data-entering') || s.getAnimations().length > 0);
+    const t0 = performance.now();
+    arrive(3, 1);
+    do {
       await raf();
-      if (older.hasAttribute('data-entering')) snap();
-    }
-    const landed = older.getAnimations().map((a) => ({ id: a.id, property: a.transitionProperty ?? null }));
-    const path = [y()];
-    for (let i = 0; i < 120 && older.getAnimations().length > 0; i++) {
+      snap(1);
+    } while (performance.now() - t0 < 60);
+    arrive(2, 2);
+    const enteringAtWave2 = all().filter((s) => s.dataset.wave === '1').map((s) => s.hasAttribute('data-entering'));
+    do {
       await raf();
-      path.push(y());
+      snap(2);
+    } while (performance.now() - t0 < 120);
+    arrive(1, 3);
+    const movingAtWave3 = all().filter((s) => s.dataset.wave === '1').map((s) => s.getAnimations().some((a) => a.id.startsWith('gs-move:')));
+    for (let i = 0; i < 120 && moving(); i++) {
+      await raf();
+      snap(3);
     }
-    return { enteringAtArrival, during, landed, path, final: older.style.transform, stillEntering: older.hasAttribute('data-entering') };
+    await raf();
+    snap(3);
+    return { gap, frames, enteringAtWave2, movingAtWave3 };
   });
-  // no enter still running when the second toast arrived, no case to test
-  expect(r.enteringAtArrival).toBe(true);
-  expect(r.stillEntering).toBe(false);
-  expect(r.during.length).toBeGreaterThan(0);
-  for (const d of r.during) expect(d).toEqual({ transform: 'translateY(0px)', ids: ['gs-move:enter'], y: 0 });
-  // the enter is gone and the restack runs as a transform transition, from 0
-  expect(r.landed).toEqual([{ id: '', property: 'transform' }]);
-  const target = Number(/translateY\((-?[\d.]+)px\)/.exec(r.final)?.[1]);
-  expect(target).toBeLessThan(0);
-  // eased, not cut: at least one frame caught strictly between 0 and the place, then it settles there
-  expect(r.path.some((v) => v < 0 && v > target)).toBe(true);
-  expect(r.path.at(-1)).toBeCloseTo(target, 3);
+  // wave 2 has to land on a first wave still entering, and wave 3 on its retargeted enter, or
+  // neither case ran
+  expect(r.enteringAtWave2).toEqual([true, true, true]);
+  expect(r.movingAtWave3).toEqual([true, true, true]);
+  const first = r.frames[0];
+  const wave2 = r.frames.filter((f) => f.wave === 2);
+  const after = r.frames.filter((f) => f.wave >= 2);
+  expect(first.slots.length).toBe(3);
+  expect(wave2.length).toBeGreaterThanOrEqual(2);
+  expect(wave2[0].slots.length).toBe(5);
+  const bad = [];
+  for (const [n, f] of r.frames.entries()) {
+    const s = f.slots;
+    for (const [i, x] of s.entries()) if (x.mixed) bad.push(`frame ${n}: slot ${i} runs a transition under its enter`);
+    for (let i = 1; i < s.length; i++) {
+      // places: the stack's own offsets from the first frame on, never two slots on the anchor
+      if (s[i - 1].place > s[i].place - s[i].height - r.gap + 0.5) bad.push(`frame ${n}: slots ${i - 1} and ${i} share a place (${s[i - 1].place}, ${s[i].place})`);
+      // slots that arrived together move together and never overlap on screen
+      if (s[i - 1].wave === s[i].wave && s[i - 1].y > s[i].y - s[i].height + 0.5) bad.push(`frame ${n}: wave ${s[i].wave} slots ${i - 1} and ${i} overlap (${s[i - 1].y}, ${s[i].y})`);
+    }
+  }
+  expect(bad).toEqual([]);
+  // an arrival renders at its place on its first frame: it slides in from the right, never from the anchor
+  for (const s of first.slots) expect(s.y).toBeCloseTo(s.place, 0);
+  for (const s of wave2[0].slots.filter((x) => x.wave === 2)) expect(s.y).toBeCloseTo(s.place, 0);
+  // the first wave rides up from where it was: on the wave's first frame it hasn't cut to its new
+  // place, it only ever moves up, and it gets there
+  const firstWave = (f) => f.slots.filter((x) => x.wave === 1);
+  const before = firstWave(r.frames.filter((f) => f.wave === 1).at(-1));
+  for (const [i, s] of firstWave(wave2[0]).entries()) {
+    expect(s.y).toBeGreaterThan(s.place + 1);
+    expect(s.y).toBeLessThanOrEqual(before[i].y + 0.5);
+  }
+  for (let n = 1; n < after.length; n++) {
+    for (const [i, s] of firstWave(after[n]).entries()) expect(s.y).toBeLessThanOrEqual(firstWave(after[n - 1])[i].y + 0.5);
+  }
+  // --gs-ease-enter only decelerates, so between arrivals every slot only slows down. a slot handed
+  // back to the stack mid enter rides its old enter to its old place, all but stops, then cuts to
+  // the new one when that enter is cancelled. a dropped frame can double a step; a cut is 50px after
+  // a near stop. the first frame of each wave is exempt, where a retarget starts at full speed
+  const cuts = [];
+  for (let n = 2; n < r.frames.length; n++) {
+    if (r.frames[n].wave !== r.frames[n - 1].wave || r.frames[n - 1].wave !== r.frames[n - 2].wave) continue;
+    for (const [i, s] of r.frames[n].slots.entries()) {
+      const a = r.frames[n - 2].slots[i];
+      const b = r.frames[n - 1].slots[i];
+      if (a === undefined || b === undefined) continue;
+      const step = Math.abs(s.y - b.y);
+      const prev = Math.abs(b.y - a.y);
+      if (step > prev * 2.5 + 2) cuts.push(`frame ${n}: slot ${i} stepped ${step.toFixed(1)}px after ${prev.toFixed(1)}px`);
+    }
+  }
+  expect(cuts).toEqual([]);
+  const last = r.frames.at(-1).slots;
+  expect(last.length).toBe(6);
+  for (const s of last) expect(s.entering).toBe(false);
+  for (const s of last) expect(s.y).toBeCloseTo(s.place, 0);
+  for (let i = 1; i < last.length; i++) expect(last[i].y - last[i].height).toBeGreaterThanOrEqual(last[i - 1].y - 0.5);
 });

@@ -24,6 +24,9 @@ export function stackOffsets(heights, gap) {
 export class GsToast extends Base {
   #onEvent = (e) => this.toast(e.detail ?? {});
   #timers = new Set();
+  // slots appended this task whose enter hasn't started, and whether the flush is queued
+  #pending = new Set();
+  #queued = false;
   // offsets come from heights, so any height change after the insert (a resize rewrapping a sticky
   // toast, a zoom, a toast added while hidden) restacks. the restack only writes translateY, which
   // never changes a slot's box, so the observer can't feed itself (¬‿¬). node has no ResizeObserver
@@ -49,19 +52,58 @@ export class GsToast extends Base {
   }
 
   // one forced layout per insert, removal or slot resize: every height read together, then every
-  // offset written
+  // offset written. a settled slot eases to its place through the slot transition. an entering slot
+  // (new this task, or still mid enter) gets its place under data-gs-still, so no transition starts
+  // under its web animation, then a fresh enter: a new slot slides in at its place, and one still
+  // entering retargets from where it is with no jump (spec 4.1, 6.6) (¬‿¬)
   #restack() {
     const slots = this.#slots();
     const gap = parseFloat(getComputedStyle(this).getPropertyValue('--gs-space-2')) || 8;
     const offsets = stackOffsets(slots.map((s) => s.offsetHeight), gap);
+    const placed = [];
     slots.forEach((s, i) => {
+      // gallery.spec.js's layout-move control patches this line by its text, so it stays spelled out
       if (s.hasAttribute('data-entering') === false) s.style.transform = `translateY(${offsets[i]}px)`;
+      else if (this.#pending.has(s) || s.style.transform !== `translateY(${offsets[i]}px)`) placed.push([s, `translateY(${offsets[i]}px)`]);
+    });
+    if (placed.length === 0) return;
+    for (const [s, place] of placed) {
+      s.setAttribute('data-gs-still', '');
+      s.style.transform = place;
+    }
+    // the style read lands every place with transitions off; only then does the opt out go
+    for (const [s] of placed) void getComputedStyle(s).transform;
+    for (const [s] of placed) s.removeAttribute('data-gs-still');
+    for (const [s] of placed) this.#enter(s);
+  }
+
+  // a burst in one task is one restack: every toast() call queues the same microtask, which runs
+  // before the next frame, so each slot of the burst enters at its final place
+  #queueRestack() {
+    if (this.#queued) return;
+    this.#queued = true;
+    queueMicrotask(() => {
+      this.#queued = false;
+      this.#restack();
+    });
+  }
+
+  #enter(slot) {
+    this.#pending.delete(slot);
+    enter(slot, { from: 'right', distance: 'toast' }).then((landed) => {
+      // a later restack retargets a slot mid enter with a fresh enter, which cancels this one. only
+      // the enter that lands hands the slot back to the stack, or the next restack would write a
+      // transitioned transform under the running animation and cut the slot when it's cancelled XX
+      if (landed === false) return;
+      slot.removeAttribute('data-entering');
+      if (slot.isConnected) this.#restack();
     });
   }
 
   #dismiss(slot) {
     if (slot.hasAttribute('data-leaving')) return;
     this.#ro?.unobserve(slot);
+    this.#pending.delete(slot);
     // out of #slots from here on, so no restack places it again. its remove, after the exit, restacks the rest
     slot.setAttribute('data-leaving', '');
     exit(slot, { to: 'right', distance: 'toast' }).then(() => {
@@ -113,15 +155,13 @@ export class GsToast extends Base {
 
     this.append(slot);
     this.#ro?.observe(slot);
-    this.#restack();
+    // the enter owns the slot's transform until it lands; the stack writes its place under
+    // data-gs-still and hands it to a fresh enter instead of transitioning it
     if (motionAllowed()) {
-      // the enter owns the slot's transform until it lands; only then does the stack write to it
       slot.setAttribute('data-entering', '');
-      enter(slot, { from: 'right', distance: 'toast' }).then(() => {
-        slot.removeAttribute('data-entering');
-        if (slot.isConnected) this.#restack();
-      });
+      this.#pending.add(slot);
     }
+    this.#queueRestack();
     // fx play on the item, never the slot: the slot's transform is its stack place (one carrier)
     if (s === 'bypass') glitchOnce(item);
     if (s === 'crash') moshOnce(item);
