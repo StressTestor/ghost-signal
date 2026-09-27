@@ -115,6 +115,7 @@ function judgeStep(budgets, run, s, out) {
     ...ref,
     settled: s.settled,
     answerExpected: s.answerExpected,
+    frameExpected: s.frameExpected !== false,
     why: s.why ?? null,
     frame: { worst: r1(Math.max(0, ...frames.map((f) => f.cpu))), over: overFrames.map((f) => ({ at: r1((f.ts - w.start) / 1000), cpu: f.cpu, heavy: f.heavy })) },
     input,
@@ -282,7 +283,9 @@ export function needsThirdRun(budgets, runs) {
   const [a, b] = runs;
   return a.steps.some((s) => {
     const t = b.steps.find((x) => x.index === s.index);
-    return TIMING_CHECKS.some((c) => (valueOf(s, c) > budgets[c]) !== (valueOf(t, c) > budgets[c]));
+    // an exempt frame never buys a third run: its values print either way and can't fail the step
+    return TIMING_CHECKS.some((c) => (c === 'frame' && s.frameExpected === false) === false
+      && (valueOf(s, c) > budgets[c]) !== (valueOf(t, c) > budgets[c]));
   });
 }
 
@@ -315,10 +318,16 @@ export function combineRuns(budgets, runs, meta) {
     }
   }
   const unconfirmed = [];
+  const exempted = [];
   for (const step of runs[0].steps) {
     for (const check of TIMING_CHECKS) {
       const limit = budgets[check];
       const values = runs.map((r) => ({ run: r.index, value: valueOf(r.steps.find((x) => x.index === step.index), check) }));
+      // joe's accepted hitch (plan d1): the values still go in the report, never in a violation
+      if (check === 'frame' && step.frameExpected === false) {
+        if (values.some((v) => v.value > limit)) exempted.push({ check, step: refOf(step), limit, values, why: step.why });
+        continue;
+      }
       const sorted = values.map((v) => v.value).sort((a, b) => a - b);
       const median = sorted[Math.floor((sorted.length - 1) / 2)];
       const over = values.filter((v) => v.value > limit);
@@ -344,6 +353,13 @@ export function combineRuns(budgets, runs, meta) {
     exemptions.push({ kind: 'answer', target, why: s.why, used });
     if (used === false) violations.push({ check: 'exemption', step: refOf(s), runs: [], data: { kind: 'answer', target, why: s.why } });
   }
+  for (const s of runs[0].steps) {
+    if (s.frameExpected !== false) continue;
+    const target = `step ${s.index} "${s.name}"`;
+    const used = exempted.some((x) => x.step.index === s.index);
+    exemptions.push({ kind: 'frame', target, why: s.why, used });
+    if (used === false) violations.push({ check: 'exemption', step: refOf(s), runs: [], data: { kind: 'frame', target, why: s.why } });
+  }
   return {
     version: REPORT_VERSION,
     scenario: meta.scenario,
@@ -357,7 +373,38 @@ export function combineRuns(budgets, runs, meta) {
     runs: runs.map((r) => ({ index: r.index, steps: r.steps, seen: r.seen, info: r.info, detail: r.detail })),
     violations,
     unconfirmed,
+    exempted,
     stalls: runs.flatMap((r) => r.stalls.map((s) => ({ ...s, run: r.index }))),
     result: violations.length > 0 ? 'fail' : 'pass',
   };
+}
+
+// plan decision d1 as joe refined it (2026-09-27): a frame exemption is used when any run of any
+// matrix entry needed it. steps line up across entries by name, since entries can walk different
+// step lists. a flip has a fast mode and a slow one, so judged per entry the ratchet would fire on a
+// lucky pass; judged over the matrix it fires only when no entry pays for the flip any more. only
+// the frame exemption's own violation is settled here, everything else stands as combineRuns left it
+export function poolFrameExemptions(reports) {
+  const usedBy = new Map();
+  for (const r of reports) {
+    for (const x of r.exempted ?? []) {
+      if (x.check !== 'frame') continue;
+      const list = usedBy.get(x.step.name) ?? [];
+      if (list.includes(r.matrix) === false) list.push(r.matrix);
+      usedBy.set(x.step.name, list);
+    }
+  }
+  return reports.map((r) => {
+    const settled = new Map();
+    const violations = r.violations.filter((v) => {
+      if (v.check !== 'exemption' || v.data?.kind !== 'frame') return true;
+      const elsewhere = (usedBy.get(v.step.name) ?? []).filter((m) => m !== r.matrix);
+      if (elsewhere.length === 0) return true;
+      settled.set(v.data.target, elsewhere);
+      return false;
+    });
+    if (settled.size === 0) return r;
+    const exemptions = r.exemptions.map((e) => (e.kind === 'frame' && settled.has(e.target) ? { ...e, usedIn: settled.get(e.target) } : e));
+    return { ...r, exemptions, violations, result: violations.length > 0 ? 'fail' : 'pass' };
+  });
 }

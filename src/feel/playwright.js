@@ -6,7 +6,7 @@ import { installProbe, PROBE_VERSION } from './probe.js';
 import { TRACE_CATEGORIES, summarizeTrace } from './trace.js';
 import { loadBudgets, mergeBudgets } from './budgets.js';
 import { GsFeelConfigError, GsFeelUnevaluable, GsFeelError } from './errors.js';
-import { evaluateRun, needsThirdRun, combineRuns, REPORT_VERSION } from './evaluate.js';
+import { evaluateRun, needsThirdRun, combineRuns, poolFrameExemptions, REPORT_VERSION } from './evaluate.js';
 import { formatReport } from './format.js';
 
 // spec 8.7: at most this many of 30 idle frames may miss a vsync before a run is unevaluable
@@ -161,9 +161,10 @@ async function drive(ctx, page) {
   let next = 0;
   const step = (kind) => async (name, fn, opts = {}) => {
     if (opts.answer === false) requireWhy(opts.why, `step "${name}" with answer: false`);
+    if (opts.frame === false) requireWhy(opts.why, `step "${name}" with frame: false`);
     const index = next;
     next += 1;
-    await page.evaluate((a) => window.__gsFeel.stepStart(a), { index, name, kind, answer: opts.answer !== false, why: opts.why ?? null });
+    await page.evaluate((a) => window.__gsFeel.stepStart(a), { index, name, kind, answer: opts.answer !== false, frame: opts.frame !== false, why: opts.why ?? null });
     await fn();
     await page.evaluate((t) => window.__gsFeel.stepEnd(t), opts.settleTimeout ?? ctx.budgets.settle);
   };
@@ -219,10 +220,9 @@ function createFeel(page, testInfo, base) {
     async scenario(name, { matrix = [{ name: 'default' }], setup, steps, budgets: extra } = {}) {
       if (typeof setup !== 'function' || typeof steps !== 'function') throw new GsFeelConfigError(`scenario "${name}" needs setup and steps functions`);
       const budgets = extra === undefined ? base : mergeBudgets(base, extra);
-      const reports = [];
+      const done = [];
       for (const m of matrix) {
         const ctx = { page, budgets, matrix: m, mode: m.mode ?? 'motion', allowShift: [...allowShift], setup, steps };
-        let report;
         try {
           await runOnce(ctx, 0, false); // the unmeasured warm-up run: jit, caches, first raster (spec 8.5)
           const runs = [];
@@ -233,8 +233,8 @@ function createFeel(page, testInfo, base) {
             runs.push(third);
             judged.push(evaluateRun(budgets, third, { mode: ctx.mode }));
           }
-          report = combineRuns(budgets, judged, { scenario: name, matrix: m.name, mode: ctx.mode, env: await environment(page, runs[0]), runsPlanned, allowShift: ctx.allowShift });
-          await attach(testInfo, report, runs);
+          const report = combineRuns(budgets, judged, { scenario: name, matrix: m.name, mode: ctx.mode, env: await environment(page, runs[0]), runsPlanned, allowShift: ctx.allowShift });
+          done.push({ report, runs });
         } catch (err) {
           if (err instanceof GsFeelUnevaluable) {
             // spec 7.9: an unevaluable run is a result too, in the same two files a pass or a fail gets
@@ -243,11 +243,19 @@ function createFeel(page, testInfo, base) {
             const json = { version: REPORT_VERSION, scenario: name, matrix: m.name, mode: ctx.mode, result: 'unevaluable', reason: err.message };
             await writeAttachment(testInfo, `${base}.json`, `${JSON.stringify(json, null, 2)}\n`, 'application/json');
           }
+          // the entries that finished keep their reports and traces, judged on their own: the
+          // matrix never got to the end, so there's nothing to pool them with
+          for (const d of done) await attach(testInfo, d.report, d.runs);
           throw err;
         }
-        if (report.result !== 'pass') throw new GsFeelError(formatReport(report), report);
-        reports.push(report);
       }
+      // a frame exemption is judged across the whole matrix (plan d1, joe 2026-09-27): a flip that
+      // stayed fast in one entry's runs is covered by an entry where it went over, so every entry
+      // runs before any verdict, and only then are the reports attached and judged
+      const reports = poolFrameExemptions(done.map((d) => d.report));
+      for (const [i, report] of reports.entries()) await attach(testInfo, report, done[i].runs);
+      const failed = reports.filter((r) => r.result !== 'pass');
+      if (failed.length > 0) throw new GsFeelError(failed.map(formatReport).join('\n'), failed[0]);
       return reports;
     },
     // one unrepeated window inside a functional spec. deterministic checks only, so a functional

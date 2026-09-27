@@ -89,6 +89,10 @@ the options, and what tasks 23 and 24 do under each:
 
 recommendation: c1 for 0.2.0, with option a as its own follow-up. c1 keeps joe's 16.7ms, makes the hitch visible in every report, and can only ratchet: an unused exemption fails, so it can't outlive the cost it names. option a is worth doing, but it's open-ended and every app's flip benefits from it, which makes it a release of its own. d1 is joe's call and nothing in task 23 step 3 onward runs until he makes it.
 
+**joe's answers, 2026-09-27.** d1: c1. a step carries `{ frame: false, why }` on the gallery's theme and glitch flips, the frames print in every report, and an exemption no run needs fails. one refinement: "used" is judged across the whole matrix for that step, not per matrix entry. task 23's after-splits pass showed g1-dark's "theme light" and "glitch 1 again" staying under budget in both runs of that entry, and per-entry counting would flake on that. so `feel.scenario()` runs every matrix entry before its verdict and a frame exemption fails only when no run of any entry needed it, with steps matched by name (`poolFrameExemptions` in `src/feel/evaluate.js`; spec 7.4 and 8.5 carry the rule). the gallery's three flipping entries run in one `scenario()` call so they pool, and its steps are named for the flip rather than the level: the glitch steps become "glitch the other level" and "glitch back", so g1-dark's and g2-dark's same line of the walk share a name, and the light set's "theme light again" becomes "theme light", the same dark to light flip the full set makes. every flip step then pools across at least two entries. option a stays a follow-up release.
+
+toast burst: 4.1 wins over 6.6. a burst of toasts restacks as it arrives with no pile-up on the anchor: `toast()` defers the restack and each enter to one microtask flush, an entering slot takes its place under `data-gs-still` and a fresh `enter()`, and `toast.spec.js:229` became a per-frame no-overlap burst check. spec 6.6 is amended to match.
+
 ```mermaid
 flowchart LR
   d1{{"d1: joe's call"}}

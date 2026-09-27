@@ -428,3 +428,39 @@ test('motion.js: a slot that entered, then restacks by transition, composites', 
   expect(report.result).toBe('pass');
   expect(report.runs[0].seen.composites, 'the positive control: the trace saw the enters and the restack').toBeGreaterThanOrEqual(3);
 });
+
+test('a frame exemption: used on the slow frames it passes and prints them, declared on a clean step it fails', async ({ page, feel }) => {
+  test.setTimeout(120_000);
+  const why = 'a control for the frame exemption';
+  const [report] = await feel.scenario('frame-exempt', {
+    setup: async () => { await page.goto(url('bad-frame')); },
+    steps: async (s) => { await s.event('ten slow frames', () => page.evaluate(() => window.burnFrames(10)), { frame: false, why }); },
+  });
+  expect(report.exemptions).toEqual([{ kind: 'frame', target: 'step 0 "ten slow frames"', why, used: true }]);
+  expect(report.exempted.map((x) => x.check)).toEqual(['frame']);
+  const err = await failing(feel.scenario('frame-exempt-unused', {
+    setup: async () => { await page.goto(url('clean')); },
+    steps: async (s) => { await s.input('toggle', () => page.locator('#toggle').click(), { frame: false, why }); },
+  }));
+  expect(fired(err)).toContain('exemption@toggle');
+});
+
+// joe's refinement of d1 (2026-09-27): "used" is judged across the whole matrix by step name. one
+// entry's slow flip covers an entry where the same step stayed fast, and a step no entry needed
+// fails every entry that declares it
+test('a frame exemption pools across the matrix: one entry needing it covers the rest, none needing it fails', async ({ page, feel }) => {
+  test.setTimeout(240_000);
+  const why = 'a control for the matrix-wide frame exemption';
+  const setup = async (m) => { await page.goto(url(m.slow ? 'bad-frame' : 'clean')); };
+  const steps = async (s, m) => {
+    await s.event('flip', () => (m.slow ? page.evaluate(() => window.burnFrames(10)) : page.evaluate(() => { document.body.dataset.flip = '1'; })), { frame: false, why });
+  };
+  const reports = await feel.scenario('frame-exempt-matrix', { matrix: [{ name: 'fast' }, { name: 'slow', slow: true }], setup, steps });
+  expect(reports.map((r) => [r.matrix, r.result, r.exemptions])).toEqual([
+    ['fast', 'pass', [{ kind: 'frame', target: 'step 0 "flip"', why, used: false, usedIn: ['slow'] }]],
+    ['slow', 'pass', [{ kind: 'frame', target: 'step 0 "flip"', why, used: true }]],
+  ]);
+  const err = await failing(feel.scenario('frame-exempt-matrix-unused', { matrix: [{ name: 'fast' }, { name: 'also fast' }], setup, steps }));
+  expect(fired(err)).toEqual(['exemption@flip']);
+  expect(err.message).toContain('also fast');
+});

@@ -2,11 +2,13 @@
 // before any app module and before first paint, and it ships as source text: installProbe must
 // close over nothing from this module. it never writes to the console, so a consumer's console
 // guard never trips on it (spec 7.1, 7.5) 👻
-export const PROBE_VERSION = 1;
+// 2: a step carries frameExpected (plan decision d1). a v1 probe beside a v2 node would drop every
+// frame exemption on the floor, so the pair has to match
+export const PROBE_VERSION = 2;
 
 export function installProbe() {
   if (window.__gsFeel !== undefined) return;
-  const VERSION = 1;
+  const VERSION = 2;
   const BOOK = new Set(['offset', 'computedOffset', 'easing', 'composite']);
   const now = () => performance.now();
   const kebab = (k) => k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
@@ -324,10 +326,10 @@ export function installProbe() {
       // the probe checks visibility when arming)
       return window.__gsFeel.apparatus();
     },
-    stepStart({ index, name, kind, answer, why }) {
+    stepStart({ index, name, kind, answer, frame = true, why }) {
       performance.mark(`gs-feel:${state.run}:${index}:start`);
       state.step = {
-        index, name, kind, answerExpected: answer, why, start: now(), end: null, settled: false, frames: [],
+        index, name, kind, answerExpected: answer, frameExpected: frame, why, start: now(), end: null, settled: false, frames: [],
         trusted: { pointerdown: 0, keydown: 0 }, inputAt: null, inputType: null,
         answerAt: null, answerWhat: null, answerCount: 0, countsBefore: counts(), countsAfter: null,
       };

@@ -48,6 +48,7 @@ test('a passing strict report prints its exemptions and nothing else', () => {
   const report = {
     ...base, runsPlanned: 1, runsDone: 1, result: 'pass', violations: [], unconfirmed: [], stalls: [],
     exemptions: [{ kind: 'shift', target: '#feed', why: 'the feed grows by design', used: true }],
+    exempted: [{ check: 'frame', step: { index: 1, name: 'theme light', kind: 'input', inputType: 'click' }, limit: 16.7, values: [{ run: 1, value: 21.4 }], why: 'a whole-page flip' }],
     runs: [{ index: 1, steps: [{ index: 0 }, { index: 1 }, { index: 2 }], seen: { animations: 3 }, info: [] }],
   };
   assert.equal(formatReport(report), [
@@ -57,6 +58,7 @@ test('a passing strict report prints its exemptions and nothing else', () => {
     'unconfirmed: none',
     'stalls: none',
     'exemptions: shift #feed (the feed grows by design)',
+    'exempted: step 1 frame 21.4ms (run 1 21.4)',
     'passed: 3 steps. 3 animations, all transform or opacity, all composited',
     '',
   ].join('\n'));
@@ -119,4 +121,13 @@ test('the stalls line counts rAF gaps and wall-clock-only tasks apart, and agree
   assert.equal(line(stalls), 'stalls: 1 rAF gap with no cpu behind it, 2 tasks long on the wall clock only (runner descheduled chromium). informational');
   assert.equal(line(stalls.slice(0, 1)), 'stalls: 1 rAF gap with no cpu behind it (runner descheduled chromium). informational');
   assert.equal(line(stalls.slice(1)), 'stalls: 2 tasks long on the wall clock only (runner descheduled chromium). informational');
+});
+
+test('a frame exemption another matrix entry used says where, instead of unused', () => {
+  const report = {
+    ...base, runsPlanned: 1, runsDone: 1, result: 'pass', violations: [], unconfirmed: [], stalls: [],
+    exemptions: [{ kind: 'frame', target: 'step 18 "theme light"', why: 'a whole-page flip', used: false, usedIn: ['g2-dark', 'g1-light'] }],
+    runs: [{ index: 1, steps: [{ index: 0 }], seen: { animations: 0 }, info: [] }],
+  };
+  assert.match(formatReport(report), /^exemptions: frame step 18 "theme light" \(a whole-page flip\), used in g2-dark, g1-light$/m);
 });
