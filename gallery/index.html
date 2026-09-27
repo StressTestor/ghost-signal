@@ -7,7 +7,12 @@
   <link rel="stylesheet" href="../src/tokens.css">
   <link rel="stylesheet" href="../src/base.css">
   <link rel="stylesheet" href="../src/fx.css">
+  <link rel="stylesheet" href="../src/motion.css">
   <style>
+    /* the module fills every section after the first paint, which moved all five sections by 0.33
+       of the viewport (spec p22). the gallery shows once it's built, never while it builds.
+       a build that throws sets data-gallery-failed instead, and the page shows whatever got built */
+    html:not([data-gallery-ready]):not([data-gallery-failed]) body { visibility: hidden; }
     body { padding: var(--gs-space-5); display: grid; gap: var(--gs-space-5); max-width: 1100px; margin: 0 auto; }
     header { display: flex; align-items: center; gap: var(--gs-space-4); flex-wrap: wrap; }
     header nav { display: flex; gap: var(--gs-space-1); flex-wrap: wrap; }
@@ -20,8 +25,33 @@
     #states .grid { display: grid; grid-template-columns: repeat(3, 1fr); }
     .sidebar { display: grid; width: 220px; background-color: var(--gs-color-surface); border: var(--gs-border); border-radius: var(--gs-radius-panel); padding: var(--gs-space-2) 0; }
     gs-row { background-color: var(--gs-color-surface); }
+    .motion-tabs { position: relative; display: flex; gap: var(--gs-space-1); }
+    .motion-view { min-height: 96px; overflow: hidden; }
+    .motion-bars { display: flex; align-items: flex-end; gap: var(--gs-space-2); height: 80px; }
+    .motion-bars span { display: block; width: 24px; height: 80px; background-color: var(--gs-color-accent-dim); transform-origin: bottom; transform: scaleY(var(--v)); }
+    .motion-flip > div { height: 28px; line-height: 28px; padding: 0 var(--gs-space-3); border-bottom: var(--gs-border); background-color: var(--gs-color-surface); }
+    .motion-list { position: relative; height: 240px; overflow-y: auto; border: var(--gs-border); border-radius: var(--gs-radius-panel); }
+    .motion-list-head { position: sticky; top: 0; z-index: 1; padding: var(--gs-space-2) var(--gs-space-3); background-color: var(--gs-color-void); }
+    .motion-list-head .gs-scroll-edge { position: absolute; left: 0; right: 0; bottom: 0; }
+    .motion-list > div:not(.motion-list-head) { height: 24px; line-height: 24px; padding: 0 var(--gs-space-3); font-family: var(--gs-font-mono); font-size: var(--gs-size-mono); color: var(--gs-color-text-muted); }
   </style>
-  <script type="module" src="./gallery.js"></script>
+  <script>
+    // the hide rule above waits on gallery.js, so a build that throws would leave a blank page
+    // forever XX. an uncaught error or a rejected top-level await lands here (the error still
+    // reaches the console); a module that 404s fires on its own script tag, hence the onerror
+    const galleryFailed = () => { document.documentElement.dataset.galleryFailed = ''; };
+    addEventListener('error', galleryFailed);
+    // ?glitch=0|1|2&theme=dark|light lands a feel setup in a known state with one navigation. it
+    // lives here, ahead of the module, because the static <gs-decode>s upgrade the moment their
+    // component modules define them and read the glitch level right then; set any later and ?glitch=0
+    // still scrambles the wordmark on load. reduced motion still wins: gs.js forces glitch 0 on import
+    {
+      const params = new URLSearchParams(location.search);
+      if (['dark', 'light'].includes(params.get('theme'))) document.documentElement.dataset.theme = params.get('theme');
+      if (['0', '1', '2'].includes(params.get('glitch'))) document.documentElement.dataset.glitch = params.get('glitch');
+    }
+  </script>
+  <script type="module" src="./gallery.js" onerror="galleryFailed()"></script>
 </head>
 <body>
   <header>
@@ -91,6 +121,25 @@
       <button data-variant="primary" id="window-yes">yes</button>
       <button id="window-no">no</button>
     </gs-window>
+  </section>
+
+  <section id="motion">
+    <h2>motion</h2>
+    <span class="gs-label">space eases on the compositor, events step. tabs, views, rows, toasts, bars, scroll</span>
+    <nav class="motion-tabs" id="motion-tabs" aria-label="views">
+      <button data-view="0" aria-current="page">one</button>
+      <button data-view="1">two</button>
+      <button data-view="2">three</button>
+    </nav>
+    <div class="gs-panel motion-view" id="motion-view"></div>
+    <div class="grid">
+      <button id="toast-burst">toast burst</button>
+      <button id="motion-shuffle">row on top</button>
+      <button id="motion-bars-new">new values</button>
+    </div>
+    <div class="motion-bars" id="motion-bars"><span data-gs-value style="--v: 0.3"></span><span data-gs-value style="--v: 0.7"></span><span data-gs-value style="--v: 0.5"></span></div>
+    <div class="motion-flip" id="motion-flip"></div>
+    <div class="motion-list" id="motion-list"><div class="motion-list-head gs-label">300 rows<span class="gs-scroll-edge"></span></div></div>
   </section>
 
   <section id="states">

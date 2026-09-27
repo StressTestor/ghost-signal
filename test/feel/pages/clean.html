@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en" data-glitch="1">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: clean</title>
+  <style>
+    body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }
+    button { font: inherit; padding: 4px 12px; background: #0c0c0d; color: inherit; border: 1px solid #2a2c2f; }
+    #toggle[aria-pressed="true"] { border-color: #0ec224; }
+    #list { position: relative; margin-top: 16px; }
+    #list > div { height: 28px; line-height: 28px; border-bottom: 1px solid #1e1f21; }
+    #scroller { position: relative; height: 200px; overflow-y: auto; margin-top: 16px; border: 1px solid #1e1f21; }
+    #scroller p { margin: 0; height: 24px; }
+    #scroller .edge {
+      position: sticky; top: 0; height: 1px; background: #2a2c2f;
+      animation: clean-spatial-edge linear both; animation-timeline: scroll(nearest); animation-range: 0 24px;
+    }
+    #toasts { position: fixed; right: 16px; bottom: 16px; width: 320px; height: 0; }
+    #toasts > div {
+      position: absolute; right: 0; bottom: 0; width: 100%; height: 36px; background: #151517;
+      transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes clean-spatial-edge { from { opacity: 0; } to { opacity: 1; } }
+  </style>
+</head>
+<body>
+  <button id="toggle" aria-pressed="false">toggle</button>
+  <div id="scroller"><div class="edge"></div></div>
+  <div id="list"></div>
+  <div id="toasts"></div>
+  <script>
+    // the clean control. every interaction here is one the feel budgets allow, so a harness that
+    // reports anything on this page is measuring itself (¬‿¬)
+    const toggle = document.getElementById('toggle');
+    toggle.addEventListener('click', () => toggle.setAttribute('aria-pressed', String(toggle.getAttribute('aria-pressed') !== 'true')));
+    // a fast key press gets no event timing entry at all (spec p5), so the key step in the clean
+    // control proves the probe's own trusted-keydown and eventCounts path carries a key step alone
+    document.addEventListener('keydown', (e) => { if (e.key === 't') toggle.click(); });
+    const list = document.getElementById('list');
+    for (let i = 0; i < 30; i++) list.append(Object.assign(document.createElement('div'), { textContent: `row ${i}` }));
+    const scroller = document.getElementById('scroller');
+    for (let i = 0; i < 60; i++) scroller.append(Object.assign(document.createElement('p'), { textContent: `line ${i}` }));
+    // flip: measure, insert, animate transform from the old offset to zero. no layout shift (spec p9)
+    window.cleanInsert = () => {
+      const rows = [...list.children];
+      const before = rows.map((r) => r.getBoundingClientRect().top);
+      const row = Object.assign(document.createElement('div'), { textContent: 'new row' });
+      list.prepend(row);
+      rows.forEach((r, i) => {
+        const dy = before[i] - r.getBoundingClientRect().top;
+        if (dy !== 0) r.animate([{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0px)' }], { duration: 200, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', id: 'gs-move:flip' });
+      });
+      row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 167, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', id: 'gs-move:enter' });
+    };
+    // toasts on transform slots: layout positions never change, so arrivals can't shift (spec p10)
+    const toasts = document.getElementById('toasts');
+    const restack = () => {
+      const slots = [...toasts.children];
+      let offset = 0;
+      for (let i = slots.length - 1; i >= 0; i--) {
+        slots[i].style.transform = `translateY(${-offset}px)`;
+        offset += 36 + 8;
+      }
+    };
+    window.cleanToasts = (n) => {
+      for (let i = 0; i < n; i++) {
+        toasts.append(Object.assign(document.createElement('div'), { textContent: `toast ${i}` }));
+        restack();
+      }
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+:root[data-glitch="1"] .poke { animation-name: sn-event-poke; animation-duration: 200ms; animation-timing-function: ease-out; }
+@keyframes sn-event-poke { from { transform: translateX(0); } to { transform: translateX(2px); } }

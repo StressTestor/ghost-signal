@@ -103,3 +103,101 @@ test.describe('reduced motion', () => {
     expect(result).toEqual({ text: 'quiet', animations: 0, glitch: '0' });
   });
 });
+
+test('a decode in a flex row holds its width on every scramble frame and shifts nothing', async ({ page }) => {
+  const r = await page.evaluate(() => new Promise((resolve) => {
+    const t0 = performance.now();
+    const shifts = [];
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.startTime > t0) shifts.push(e.value); }).observe({ type: 'layout-shift', buffered: true });
+    const el = document.getElementById('fd');
+    const after = document.getElementById('after');
+    const widths = [];
+    const lefts = [];
+    const mo = new MutationObserver(() => {
+      widths.push(el.getBoundingClientRect().width);
+      lefts.push(after.getBoundingClientRect().left);
+    });
+    mo.observe(el, { subtree: true, childList: true, characterData: true });
+    el.addEventListener('gs-decode-done', () => {
+      for (const rec of mo.takeRecords()) if (rec) widths.push(el.getBoundingClientRect().width);
+      mo.disconnect();
+      widths.push(el.getBoundingClientRect().width);
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve({ widths, lefts, shifts, final: el.hasAttribute('data-final') })));
+    }, { once: true });
+    // the same text again: a new, longer text would change the width once by design. what must not
+    // change it is the scramble, which draws in mono
+    window.GS.seed(3);
+    el.setAttribute('text', 'width holds');
+  }));
+  expect(r.widths.length).toBeGreaterThan(2);
+  expect(new Set(r.widths).size).toBe(1);
+  expect(new Set(r.lefts).size).toBe(1);
+  expect(r.shifts).toEqual([]);
+  expect(r.final).toBe(false);
+});
+
+// the overlay is sized to the final text in the host's font but draws in mono, which is wider. if it
+// wrapped inside that box, overflow: hidden ate whole lines: "width holds" lost its second word for the
+// entire scramble. so the overlay stays on one line and only its right edge clips. #nd wraps to two
+// lines in the host font, which pins the trade-off: its lower line is blank while it plays
+test('the scramble overlay never loses a line to the clip, single line or wrapping host', async ({ page }) => {
+  const r = await page.evaluate(() => new Promise((resolve) => {
+    const hosts = ['fd', 'nd'].map((id) => document.getElementById(id));
+    const samples = { fd: [], nd: [] };
+    const mo = new MutationObserver(() => {
+      for (const el of hosts) {
+        if (el.hasAttribute('data-playing') === false) continue;
+        const s = el.querySelector('[part="text"]');
+        samples[el.id].push({ sh: s.scrollHeight, ch: s.clientHeight });
+      }
+    });
+    mo.observe(document.body, { subtree: true, childList: true, characterData: true });
+    let left = hosts.length;
+    for (const el of hosts) {
+      el.addEventListener('gs-decode-done', () => {
+        left -= 1;
+        if (left === 0) { mo.disconnect(); resolve(samples); }
+      }, { once: true });
+    }
+    window.GS.seed(3);
+    for (const el of hosts) el.setAttribute('text', el.getAttribute('text'));
+  }));
+  expect(r.fd.length).toBeGreaterThan(2);
+  expect(r.nd.length).toBeGreaterThan(2);
+  // the wrapping host really is taller than one line, or this case proves nothing
+  expect(r.nd[0].ch).toBeGreaterThan(r.fd[0].ch * 1.5);
+  expect(r.fd.filter((s) => s.sh > s.ch)).toEqual([]);
+  expect(r.nd.filter((s) => s.sh > s.ch)).toEqual([]);
+});
+
+// the wordmark sets line-height: 1, and a mono line's ink runs past a 1em line box. with the overlay
+// clipped on both axes, every playing frame lost the bottom of g, y, j, q, | and _. nowrap already
+// keeps the overlay to one line, so anything below the box is glyph overhang, never a hidden line,
+// and only the horizontal axis is clipped. the proof is pixels: the host's box plus a band under it
+// must paint the same with the overlay clipped as with the clip lifted
+test('the scramble overlay keeps its descenders on a line-height 1 host', async ({ page }) => {
+  await page.addStyleTag({ content: ':root { --gs-motion-decode: 60s; } #tight { padding: 12px 0; }' });
+  const box = await page.evaluate(() => new Promise((resolve) => {
+    const el = document.getElementById('lh');
+    window.GS.seed(3);
+    el.setAttribute('text', 'ghost signal');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const s = el.querySelector('[part="text"]');
+      const r = el.getBoundingClientRect();
+      resolve({ playing: el.hasAttribute('data-playing'), frame: s.textContent, sh: s.scrollHeight, ch: s.clientHeight, left: r.left, right: r.right, top: r.top, bottom: r.bottom });
+    }));
+  }));
+  expect(box.playing).toBe(true);
+  // g settles on the first frame, so the frame on screen has a descender in it
+  expect(box.frame.startsWith('g')).toBe(true);
+  // the mono line really is taller than the 1em box, or this case proves nothing
+  expect(box.sh).toBeGreaterThan(box.ch);
+  // whole pixels inside the host's width, so the right-edge clip stays out of the shot
+  const clip = { x: Math.ceil(box.left), y: Math.floor(box.top), width: Math.floor(box.right) - Math.ceil(box.left) - 1, height: Math.ceil(box.bottom - box.top) + 10 };
+  const clipped = await page.screenshot({ clip });
+  await page.addStyleTag({ content: 'gs-decode[data-playing] [part="text"] { overflow: visible !important; }' });
+  const lifted = await page.screenshot({ clip });
+  const still = await page.evaluate(() => document.getElementById('lh').hasAttribute('data-playing'));
+  expect(still).toBe(true);
+  expect(clipped.equals(lifted)).toBe(true);
+});

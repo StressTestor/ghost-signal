@@ -1,6 +1,6 @@
 {
   "name": "ghost-signal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "design system for joe's guis: tokens, css, web components, plug-in contract",
   "type": "module",
   "license": "MIT",
@@ -18,7 +18,9 @@
     "test": "node --test 'test/unit/**/*.test.js'",
     "gen": "node scripts/gen.js",
     "check": "node scripts/check-contrast.js",
-    "e2e": "playwright test",
+    "e2e": "playwright test --project=chromium",
+    "feel": "playwright test --project=feel --workers=1",
+    "showcase": "playwright test --project=showcase --workers=1 && bash scripts/showcase-clips.sh",
     "serve": "node scripts/serve.js"
   },
   "engines": {

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: bad key</title>
+  <style>body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }</style>
+</head>
+<body>
+  <p id="status">idle</p>
+  <script>
+    // planted: a keydown handler burning 80ms. the key path has its own event timing entry (spec p6)
+    document.addEventListener('keydown', function slowkey() {
+      const t = performance.now();
+      while (performance.now() - t < 80) document.body.dataset.burn = '1';
+      document.getElementById('status').textContent = 'pressed';
+    });
+  </script>
+</body>
+</html>

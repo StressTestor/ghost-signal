@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: untrusted</title>
+  <style>body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }</style>
+</head>
+<body>
+  <button id="b">press</button>
+  <p id="out">idle</p>
+  <script>
+    // planted: the spec drives this with evaluate(() => b.click()), which is not an input. the
+    // harness has to call that unevaluable instead of timing a click that never happened
+    document.getElementById('b').addEventListener('click', () => { document.getElementById('out').textContent = 'pressed'; });
+  </script>
+</body>
+</html>

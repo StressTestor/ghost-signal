@@ -155,24 +155,33 @@ no scanlines in chrome. no grain. no blur. no glass.
 
 ### 3.6 motion
 
-the default is a hard cut. easing is an exception that has to be listed here.
+revised in v0.2 (`2026-09-24-ghost-signal-v0.2-design.md`, section 3): hybrid motion. every
+animation is space, signal or a cut.
+
+- space: something arrives, leaves or changes place. eases on the compositor through `transform`
+  and `opacity`, with `--gs-ease-enter`, `--gs-ease-exit` and `--gs-ease-move` over
+  `--gs-motion-enter` 167ms, `exit` 100ms, `view` 183ms, `shift` 200ms, `indicator` 117ms and
+  `value` 233ms (whole frames at 60hz). needs `motion.css`; without it space cuts.
+- signal: the system reports that something happened. stepped, gated on `data-glitch`:
 
 | token | value | applies to |
 |---|---|---|
-| `--gs-step-sprite` | `steps(4)` over 800ms | face blink, wallpaper sprites, `gs-decode` |
-| `--gs-cut` | 0ms | app switch, panel swap, state change |
-| `--gs-glitch` | 180ms `steps(3)` | slice displacement on bypass, crash, face expression change, app switch (one frame) |
-| `--gs-mosh` | 420ms `steps(6)` | datamosh smear on crash |
-| `--gs-flare` | 640ms `steps(8)` | deny flare on a row |
-| `--gs-hover` | 80ms ease-out | color and border on hover/focus only |
+| `--gs-step-sprite` | `steps(4)` over 800ms | face blink, wallpaper sprites |
+| `--gs-motion-glitch` | 180ms `steps(3)` | slice displacement on bypass and a face expression change |
+| `--gs-motion-mosh` | 420ms `steps(6)` | datamosh smear on crash |
+| `--gs-motion-flare` | 640ms `steps(8)` | deny flare on a row |
 | `--gs-motion-decode` | 250ms `steps(6)` | `<gs-decode>` scramble reveal |
 | `--gs-motion-ambient-min/max` | 20s / 40s | ambient one-frame micro-glitch interval |
 
-allowed to ease: `color`, `border-color`, `background-color` on hover and focus. nothing else.
-no transforms ease. no opacity fades between views.
+- cut: hover and focus color, `aria-current` and `aria-pressed` color, the 1px press, filtering
+  a list. nothing animates. `--gs-motion-hover` is 0ms, deprecated, removed in 0.3.
 
-`@media (prefers-reduced-motion: reduce)` sets every duration above to 0ms, disables ambient
-glitch, disables the blink, and forces `data-glitch="0"`. color and kaomoji carry the meaning.
+only `transform` and `opacity` ever animate. space is eased and signal is stepped, and a spatial
+and a signal transform never share an element.
+
+`@media (prefers-reduced-motion: reduce)` sets every duration above to 0ms, `motion.css` declares
+nothing outside `prefers-reduced-motion: no-preference`, ambient glitch and the blink stop, and
+`data-glitch` is forced to `0`. color and kaomoji carry the meaning.
 
 ### 3.7 hooks on `:root`
 
@@ -422,6 +431,18 @@ encoder is not part of it.
 `gallery/index.html` renders every component in every status, both themes, all three glitch
 levels, and the probe app. it is the surface i check by eye before any tag. playwright screenshots
 it per (theme, glitch) and stores them as artifacts, not as assertions.
+
+### 9.6 feel
+
+added in v0.2 (section 7 of the v0.2 spec). the `feel` playwright project runs alone and fails on
+a frame over 16.7ms of main-thread cpu, input to paint over 50ms, a task over 50ms, a layout shift
+with no recent input, an animated property other than `transform` or `opacity`, an animation
+chromium can't composite, a family violation, and an input nothing answers within 50ms.
+`test/feel/harness.spec.js` proves the harness on planted controls, `test/feel/gallery.feel.js`
+holds the gallery to it at glitch 1 and 2, calm, reduced motion and the light theme. its theme
+and glitch switches carry the frame exemption from v0.2 plan decision d1 (2026-09-27): an exempt
+frame still fails over two vsync intervals, and an exemption none of the three flipping entries
+needed prints a notice and passes.
 
 ## 10. repo layout
 

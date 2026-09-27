@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: bad property</title>
+  <style>
+    body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }
+    #box { position: relative; width: 80px; height: 24px; background: #151517; }
+    #tint { width: 80px; height: 24px; background-color: #151517; transition: background-color 200ms ease-out; }
+    #tint.on { background-color: #ad2a23; }
+    /* spec p20: a 0ms transition creates no Animation object, which the inert --gs-motion-hover
+       (task 8) relies on. it changes in the same step and must never show up in a violation */
+    #zero { width: 80px; height: 24px; background-color: #151517; transition: background-color 0ms ease-out; }
+    #zero.on { background-color: #ad2a23; }
+    /* spec p14: an animation on a pseudo element never shows in target.getAnimations(), only with
+       { subtree: true }. the probe has to find this one and name its ::after */
+    #pseudo { position: relative; width: 80px; height: 24px; }
+    #pseudo.on::after { content: ""; position: absolute; top: 0; left: 0; width: 8px; height: 24px; background: #ad2a23; animation: sn-spatial-pseudo-left 200ms linear 1; }
+    @keyframes sn-spatial-pseudo-left { from { left: 0; } to { left: 40px; } }
+  </style>
+</head>
+<body>
+  <p>planted: a left animation and a background-color transition</p>
+  <div id="box"></div>
+  <div id="tint"></div>
+  <div id="zero"></div>
+  <div id="pseudo"></div>
+  <script>
+    // planted: a left animation and a background-color transition. neither is transform or opacity
+    window.paint = () => {
+      document.getElementById('box').animate([{ left: '0px' }, { left: '100px' }], { duration: 200, id: 'gs-move:left' });
+      document.getElementById('tint').classList.add('on');
+      document.getElementById('zero').classList.add('on');
+      document.getElementById('pseudo').classList.add('on');
+    };
+  </script>
+</body>
+</html>

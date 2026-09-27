@@ -42,27 +42,72 @@ export function checkTokens(tokens) {
   return failures;
 }
 
-// minimal css rule walker: enough for our own two files. handles nested @media,
-// skips at-rules with declaration bodies (@font-face, @keyframes percent blocks are kept).
-export function cssRules(css) {
+export const UNBALANCED = 'ERR_CSS_UNBALANCED';
+
+// minimal css rule walker: enough for our own sheets. handles nested @media and @supports and
+// records them as parents; @keyframes percent blocks come back as rules whose parent is the @keyframes prelude.
+// flat sheets only: a style rule nested in another would come back glued to its parent's
+// declarations, so a caller that can't live with that passes onNested(inner, outer), called at the
+// '{' that opens inside a style rule. strings, escapes and comments are skipped as text, so
+// content: "}" stays in its body. a brace count that doesn't come out even throws UNBALANCED:
+// half a sheet read is worse than none. a brace inside an unquoted url() still counts as a brace
+export function cssRules(css, { file = 'css', onNested } = {}) {
   const out = [];
-  const src = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const stack = [];
+  const opened = [];
   let buf = '';
-  for (const ch of src) {
-    if (ch === '{') {
-      stack.push(buf.trim());
+  let line = 1;
+  const refuse = (at, what) => {
+    throw Object.assign(new Error(`unbalanced braces (${file} line ${at}: ${what}), a brace inside an unquoted url() isn't supported`), { code: UNBALANCED });
+  };
+  for (let i = 0; i < css.length; i += 1) {
+    const ch = css[i];
+    if (ch === '\n') line += 1;
+    if (ch === '/' && css[i + 1] === '*') {
+      // a comment is nothing at all. an unclosed one runs to the end of the sheet, as it does in a browser
+      const end = css.indexOf('*/', i + 2);
+      const stop = end === -1 ? css.length : end + 2;
+      line += (css.slice(i, stop).match(/\n/g) ?? []).length;
+      i = stop - 1;
+    } else if (ch === '\\') {
+      buf += ch + (css[i + 1] ?? '');
+      if (css[i + 1] === '\n') line += 1;
+      i += 1;
+    } else if (ch === '"' || ch === "'") {
+      // a string is text: its braces, semicolons and comment openers belong to the value
+      const from = line;
+      let j = i + 1;
+      for (; j < css.length && css[j] !== ch; j += 1) {
+        if (css[j] === '\\') j += 1;
+        if (css[j] === '\n') line += 1;
+      }
+      if (j >= css.length) refuse(from, 'a string never closes');
+      buf += css.slice(i, j + 1);
+      i = j;
+    } else if (ch === ';' && (stack.length === 0 || stack.at(-1).startsWith('@'))) {
+      // outside a style rule a ';' ends a statement (@import, @charset, @layer a, b). without this
+      // reset it glues onto the next prelude, which then starts with '@' and the rule vanishes
+      buf = '';
+    } else if (ch === '{') {
+      const prelude = buf.trim();
+      const outer = stack.find((s) => s.startsWith('@') === false);
+      if (outer !== undefined && onNested !== undefined) onNested(prelude.slice(prelude.lastIndexOf(';') + 1).trim(), outer);
+      stack.push(prelude);
+      opened.push(line);
       buf = '';
     } else if (ch === '}') {
+      if (stack.length === 0) refuse(line, "a '}' that closes nothing");
       const selector = stack.pop();
-      if (selector !== undefined && selector.startsWith('@') === false && buf.trim() !== '') {
-        out.push({ selector, body: buf });
+      opened.pop();
+      if (selector.startsWith('@') === false && buf.trim() !== '') {
+        out.push({ selector, body: buf, parents: stack.filter((s) => s.startsWith('@')) });
       }
       buf = '';
     } else {
       buf += ch;
     }
   }
+  if (stack.length !== 0) refuse(opened.at(-1), `${stack.at(-1)} never closes`);
   return out;
 }
 
@@ -75,11 +120,11 @@ function declarations(body) {
 
 const TOKEN_RE = /var\(--gs-color-([a-z0-9-]+)\)/;
 
-export function scanCss(css, tokens) {
+export function scanCss(css, tokens, file) {
   const failures = [];
   const never = new Set(tokens.contrast.neverText);
   const onRaised = new Set(tokens.contrast.textOn.raised);
-  for (const { selector, body } of cssRules(css)) {
+  for (const { selector, body } of cssRules(css, { file })) {
     const decls = declarations(body);
     const bgDecl = decls.find((d) => d.property === 'background-color' || d.property === 'background');
     const bgToken = bgDecl?.value.match(TOKEN_RE)?.[1];

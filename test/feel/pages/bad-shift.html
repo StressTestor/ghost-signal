@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: bad shift</title>
+  <style>
+    body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }
+    #list > div { height: 28px; line-height: 28px; border-bottom: 1px solid #1e1f21; }
+  </style>
+</head>
+<body>
+  <div id="list"></div>
+  <script>
+    // planted: a row lands above the visible rows from a timer, no input, no flip (spec p8)
+    const list = document.getElementById('list');
+    for (let i = 0; i < 20; i++) list.append(Object.assign(document.createElement('div'), { textContent: `row ${i}` }));
+    window.insertAbove = () => setTimeout(() => list.prepend(Object.assign(document.createElement('div'), { textContent: 'surprise row' })), 0);
+  </script>
+</body>
+</html>

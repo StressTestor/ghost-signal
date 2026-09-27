@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: bad composite</title>
+  <style>body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }</style>
+</head>
+<body>
+  <p>an <span id="inl">inline span</span> in a line</p>
+  <script>
+    // planted: transform on an inline box. it passes the property check and still can't run on the
+    // compositor, which is what the composite check exists for (spec 7.7)
+    window.slideInline = () => document.getElementById('inl').animate([{ transform: 'translateX(0)' }, { transform: 'translateX(40px)' }], { duration: 200, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', id: 'gs-move:inline' });
+  </script>
+</body>
+</html>

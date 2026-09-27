@@ -34,7 +34,7 @@ test('a locked key fails', async () => {
 
 test('a range that excludes the installed version fails', async () => {
   const r = await check(f('flavor-bad-range.json'));
-  assert.deepEqual(r.errors, ['ghostSignal range ^0.2 excludes installed 0.1.0']);
+  assert.deepEqual(r.errors, ['ghostSignal range ^0.3 excludes installed 0.2.0']);
 });
 
 test('an app that defines a gs- element fails', async () => {

@@ -1,6 +1,7 @@
 // retro os popup. modal, traps tab, escape closes, title bar in the display font.
 // the element's own children become the body on first connect
 import { injectIcons } from '../gs.js';
+import { enter, exit } from '../motion.js';
 
 const Base = globalThis.HTMLElement ?? class {};
 
@@ -11,6 +12,7 @@ export class GsWindow extends Base {
 
   #built = false;
   #frame = null;
+  #backdrop = null;
   #title = null;
   #body = null;
   #closeButton = null;
@@ -40,6 +42,7 @@ export class GsWindow extends Base {
     const backdrop = document.createElement('div');
     backdrop.setAttribute('part', 'backdrop');
     backdrop.addEventListener('click', () => this.close());
+    this.#backdrop = backdrop;
 
     this.#frame = document.createElement('div');
     this.#frame.setAttribute('part', 'frame');
@@ -82,16 +85,32 @@ export class GsWindow extends Base {
   }
 
   #activate() {
+    this.inert = false;
+    this.removeAttribute('data-leaving');
     this.#restore = document.activeElement;
     document.addEventListener('keydown', this.#onKey);
     const inBody = this.#focusables().filter((el) => this.#body.contains(el));
     (inBody[0] ?? this.#closeButton).focus();
+    enter(this.#frame, { from: 'above' });
+    enter(this.#backdrop, { distance: 0 });
   }
 
   #deactivate() {
     document.removeEventListener('keydown', this.#onKey);
+    this.setAttribute('data-leaving', '');
+    // a leaving window is still displayed, so its buttons still take keys unless it goes inert
+    this.inert = true;
+    Promise.all([exit(this.#frame, { to: 'above' }), exit(this.#backdrop, { distance: 0 })]).then(([done]) => {
+      if (done && this.hasAttribute('open') === false) {
+        this.removeAttribute('data-leaving');
+        this.inert = false;
+      }
+    });
     this.dispatchEvent(new CustomEvent('gs-close', { bubbles: true }));
     if (this.#restore !== null && typeof this.#restore.focus === 'function') this.#restore.focus();
+    // a restore target that can't take focus (body, a palette input that already left) leaves it on
+    // the frame, and escape then enter would answer yes to the thing you just dismissed XX
+    if (this.hasAttribute('open') === false && this.#frame.contains(document.activeElement)) document.activeElement.blur();
     this.#restore = null;
   }
 

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: bad family</title>
+  <style>
+    body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }
+    .box { width: 120px; height: 24px; margin: 8px 0; background: #151517; }
+    .eased { animation: sn-event-eased 200ms ease-out 1; }
+    .stepped { animation: sn-spatial-stepped 200ms steps(4) 1; }
+    .glitch { animation: sn-event-glitch 180ms steps(3) 1; }
+    .mixed { animation: sn-event-mixed 200ms steps(3) 1; }
+    @keyframes sn-event-eased { from { transform: translateX(0); } to { transform: translateX(8px); } }
+    @keyframes sn-event-mixed { 0% { transform: translateX(0); } 50% { transform: translateX(4px); animation-timing-function: ease-out; } 100% { transform: translateX(8px); } }
+    @keyframes sn-spatial-stepped { from { transform: translateX(0); } to { transform: translateX(40px); } }
+    @keyframes sn-event-glitch { 0% { transform: translateX(-2px); } 50% { transform: translateX(2px); } 100% { transform: translateX(0); } }
+  </style>
+</head>
+<body>
+  <p>planted: family violations</p>
+  <div class="box" id="a"></div>
+  <div class="box" id="b"></div>
+  <div class="box" id="c"></div>
+  <div class="box" id="d"></div>
+  <div class="box" id="e"></div>
+  <script>
+    // planted: an eased event, a stepped spatial move, a glitch on an element mid slide (two
+    // transform animations on one carrier), a signal that runs at glitch 0, and a stepped event
+    // that eases from its 50% keyframe on (the half an any-steps() check would wave through)
+    const play = (el, cls) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
+    window.eased = () => play(document.getElementById('a'), 'eased');
+    window.stepped = () => play(document.getElementById('b'), 'stepped');
+    window.glitchMidSlide = () => {
+      const c = document.getElementById('c');
+      c.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(60px)' }], { duration: 400, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', id: 'gs-move:slide' });
+      setTimeout(() => play(c, 'glitch'), 100);
+    };
+    window.glitchAtZero = () => play(document.getElementById('d'), 'glitch');
+    window.mixed = () => play(document.getElementById('e'), 'mixed');
+  </script>
+</body>
+</html>

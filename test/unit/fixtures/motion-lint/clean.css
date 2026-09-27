@@ -1,0 +1,6 @@
+@media (prefers-reduced-motion: no-preference) {
+  .bar { transition: transform var(--gs-motion-shift) var(--gs-ease-move); }
+  .still { transition: none; }
+}
+:root[data-glitch="1"] .poke { animation: sn-event-poke var(--gs-motion-glitch) var(--gs-step-glitch) 1; }
+@keyframes sn-event-poke { 0% { transform: translateX(-2px); } 100% { transform: translateX(0); opacity: 1; } }

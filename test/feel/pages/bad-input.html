@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: bad input</title>
+  <style>body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }</style>
+</head>
+<body>
+  <button id="slow">slow</button>
+  <p id="status">idle</p>
+  <script>
+    // planted: a click handler burning 80ms. input to paint and the task budget both have to fire
+    document.getElementById('slow').addEventListener('click', function slowclick() {
+      const t = performance.now();
+      while (performance.now() - t < 80) document.body.dataset.burn = '1';
+      document.getElementById('status').textContent = 'clicked';
+    });
+  </script>
+</body>
+</html>

@@ -97,10 +97,16 @@ generated from tokens.json by scripts/gen.js. do not edit.
 | `--gs-motion-glitch` | `180ms` |
 | `--gs-motion-mosh` | `420ms` |
 | `--gs-motion-flare` | `640ms` |
-| `--gs-motion-hover` | `80ms` |
+| `--gs-motion-hover` | `0ms` |
 | `--gs-motion-decode` | `250ms` |
 | `--gs-motion-ambient-min` | `20s` |
 | `--gs-motion-ambient-max` | `40s` |
+| `--gs-motion-enter` | `167ms` |
+| `--gs-motion-exit` | `100ms` |
+| `--gs-motion-view` | `183ms` |
+| `--gs-motion-shift` | `200ms` |
+| `--gs-motion-indicator` | `117ms` |
+| `--gs-motion-value` | `233ms` |
 
 ## step
 
@@ -117,6 +123,35 @@ generated from tokens.json by scripts/gen.js. do not edit.
 | token | value |
 | --- | --- |
 | `--gs-ease-hover` | `ease-out` |
+| `--gs-ease-enter` | `cubic-bezier(0.16, 1, 0.3, 1)` |
+| `--gs-ease-exit` | `cubic-bezier(0.4, 0, 1, 1)` |
+| `--gs-ease-move` | `cubic-bezier(0.16, 1, 0.3, 1)` |
+
+deprecated, removed in 0.3: `--gs-motion-hover`, `--gs-ease-hover`. both stay emitted so an old `var()` still resolves, and at 0ms a leftover transition creates no animation.
+
+## distance
+
+| token | value |
+| --- | --- |
+| `--gs-distance-enter` | `8px` |
+| `--gs-distance-toast` | `24px` |
+| `--gs-distance-view` | `16px` |
+
+## feel budgets
+
+read by `src/feel/budgets.js` at run time from the tag an app pins. never emitted to css.
+
+| budget | value |
+| --- | --- |
+| `frame` | `16.7ms` |
+| `vsyncMiss` | `1.5` |
+| `input` | `50ms` |
+| `task` | `50ms` |
+| `answer` | `50ms` |
+| `shift` | `0` |
+| `settle` | `1000ms` |
+| `runs` | `3` |
+| `properties` | `transform, opacity` |
 
 ## contrast
 

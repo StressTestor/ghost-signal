@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>motion</title>
+  <link rel="stylesheet" href="../../../src/tokens.css">
+  <link rel="stylesheet" href="../../../src/base.css">
+  <link rel="stylesheet" href="../../../src/fx.css">
+  <link rel="stylesheet" href="../../../src/motion.css">
+  <style>
+    #box { width: 120px; height: 40px; margin: 40px; background-color: var(--gs-color-raised); }
+    .row { height: 28px; line-height: 28px; border-bottom: var(--gs-border); }
+    .tabs { position: relative; display: flex; gap: 8px; margin: 16px; }
+  </style>
+  <script type="module">
+    import * as motion from '../../../src/motion.js';
+    import { registerCommands } from '../../../src/gs.js';
+    import '../../../src/components/palette.js';
+    import '../../../src/components/window.js';
+    window.motion = motion;
+    registerCommands('probe', [
+      { id: 'probe.ping', title: 'ping the bridge', shortcut: 'p' },
+      { id: 'probe.tests', title: 'run tests' },
+      { id: 'probe.list', title: 'list files' },
+    ]);
+    window.ready = true;
+  </script>
+</head>
+<body>
+  <div id="box"></div>
+  <nav id="tabs" class="tabs" aria-label="views"><button aria-current="page">one</button><button>two</button><button>three wide</button></nav>
+  <div id="list"><div class="row">a</div><div class="row">b</div><div class="row">c</div><div class="row">d</div></div>
+  <gs-palette id="p"></gs-palette>
+  <gs-window id="w" heading="confirm"><p>run it?</p><button id="yes">yes</button></gs-window>
+</body>
+</html>

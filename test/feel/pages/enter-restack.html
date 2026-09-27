@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-glitch="1">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: enter, then restack</title>
+  <link rel="stylesheet" href="../../../src/tokens.css">
+  <link rel="stylesheet" href="../../../src/base.css">
+  <link rel="stylesheet" href="../../../src/motion.css">
+  <style>
+    #stack { position: relative; height: 120px; margin: 24px; }
+    #stack > div { position: absolute; left: 0; bottom: 0; width: 240px; height: 32px; background-color: var(--gs-color-raised);
+      transition: transform var(--gs-motion-shift) var(--gs-ease-move); }
+  </style>
+  <script type="module">
+    import { enter } from '../../../src/motion.js';
+    // the toast pattern with nothing else on the page: a slot enters through motion.js, lands, and
+    // is then restacked by its own css transition. chromium composites that transition only when no
+    // finished web animation is still attached to the slot (composite bit 6)
+    const stack = document.getElementById('stack');
+    window.arrive = () => {
+      const slot = Object.assign(document.createElement('div'), { textContent: `slot ${stack.children.length + 1}` });
+      stack.append(slot);
+      return enter(slot, { from: 'right', distance: 'toast' });
+    };
+    window.restack = () => {
+      const slots = [...stack.children];
+      slots.forEach((s, i) => { s.style.transform = `translateY(${-(slots.length - 1 - i) * 40}px)`; });
+    };
+    window.ready = true;
+  </script>
+</head>
+<body>
+  <p>enter, then restack</p>
+  <div id="stack"></div>
+</body>
+</html>

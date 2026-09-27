@@ -1,7 +1,7 @@
 {
   "$schema": "https://ghost-signal.local/schema/flavor.v1.json",
   "app": "probe",
-  "ghostSignal": "^0.1",
+  "ghostSignal": "^0.2",
   "accent2": { "dark": "#b78bff", "light": "#6b2fc9" },
   "texture": "dither",
   "sprite": "./sprites/probe.grid",

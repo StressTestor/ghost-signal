@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>feel control: transform, no shift</title>
+  <style>
+    body { margin: 0; padding: 24px; font: 13px system-ui, sans-serif; background: #050505; color: #eef1f2; }
+    #mover { width: 80px; height: 24px; background: #151517; }
+    #list > div { height: 28px; line-height: 28px; border-bottom: 1px solid #1e1f21; }
+  </style>
+</head>
+<body>
+  <div id="mover"></div>
+  <div id="list"></div>
+  <script>
+    // the assumption the toast, drawer and seance designs rest on (spec p9, p10): moving by
+    // transform, and inserting with flip, register no layout shift on the pinned chromium
+    const list = document.getElementById('list');
+    for (let i = 0; i < 20; i++) list.append(Object.assign(document.createElement('div'), { textContent: `row ${i}` }));
+    window.moveByTransform = () => new Promise((resolve) => {
+      const m = document.getElementById('mover');
+      let x = 0;
+      const t = setInterval(() => {
+        x += 10;
+        m.style.transform = `translateX(${x}px)`;
+        if (x >= 100) { clearInterval(t); resolve(); }
+      }, 16);
+    });
+    window.flipInsert = () => {
+      const rows = [...list.children];
+      const before = rows.map((r) => r.getBoundingClientRect().top);
+      list.prepend(Object.assign(document.createElement('div'), { textContent: 'new row' }));
+      rows.forEach((r, i) => {
+        const dy = before[i] - r.getBoundingClientRect().top;
+        if (dy !== 0) r.animate([{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0px)' }], { duration: 200, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', id: 'gs-move:flip' });
+      });
+    };
+  </script>
+</body>
+</html>

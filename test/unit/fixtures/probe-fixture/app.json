@@ -3,7 +3,7 @@
   "id": "probe",
   "name": "probe",
   "version": "0.1.0",
-  "ghostSignal": "^0.1",
+  "ghostSignal": "^0.2",
   "flavor": "./flavor.json",
   "entry": "./index.html",
   "status": { "kind": "event", "name": "probe:status" },
