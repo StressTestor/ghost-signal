@@ -126,11 +126,40 @@ export function injectIcons(root) {
 const themed = new Set();
 let themeObserver = null;
 
+// a theme flip repaints every watched canvas, but never in the flip's own frame: the style recalc
+// for the new colors already takes most of it, so the observer only schedules. from the next frame,
+// on-screen canvases first, four per frame, so a page full of faces never spends one frame on all
+// of them (spec 7.7, frame) >:[
+const REPAINTS_PER_FRAME = 4;
+let repaintQueue = null;
+
+function drainRepaints() {
+  if (repaintQueue === null) {
+    // layout is clean by now, so sorting by position forces nothing
+    const onScreen = (m) => {
+      const r = m.getBoundingClientRect();
+      return r.bottom > 0 && r.top < window.innerHeight;
+    };
+    const all = [...themed];
+    repaintQueue = [...all.filter(onScreen), ...all.filter((m) => onScreen(m) === false)];
+  }
+  for (const item of repaintQueue.splice(0, REPAINTS_PER_FRAME)) if (item.isConnected) item.render();
+  if (repaintQueue.length > 0) requestAnimationFrame(drainRepaints);
+  else repaintQueue = null;
+}
+
+let repaintScheduled = false;
 export function watchTheme(el) {
   themed.add(el);
   if (themeObserver !== null || hasDocument() === false || typeof MutationObserver !== 'function') return;
   themeObserver = new MutationObserver(() => {
-    for (const item of themed) item.render();
+    repaintQueue = null;
+    if (repaintScheduled) return;
+    repaintScheduled = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      repaintScheduled = false;
+      drainRepaints();
+    }));
   });
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 }

@@ -33,9 +33,13 @@ window.gallery = {
   setTheme(theme) { html.dataset.theme = theme; },
   setGlitch(level) {
     html.dataset.glitch = String(level);
-    for (const row of document.querySelectorAll('gs-row')) row.render();
-    stopAmbient();
-    stopAmbient = startAmbient();
+    // the flip restyles the whole page in this frame. the rows re-render (glitch 2 swaps labels to
+    // decode) and ambient restarts in the next one, so the two never share a frame
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      for (const row of document.querySelectorAll('gs-row')) row.render();
+      stopAmbient();
+      stopAmbient = startAmbient();
+    }));
   },
   setStatus(status) {
     for (const face of document.querySelectorAll('gs-face[data-gallery]')) face.setAttribute('status', status);
